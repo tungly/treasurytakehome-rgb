@@ -18,7 +18,8 @@ public class LabelReader(ChatClient chat)
         Use null for any field that is not on the label or that you cannot read.
 
         - brandName: the brand name.
-        - classType: the class or type designation, such as "Kentucky Straight Bourbon Whiskey".
+        - classType: the class or type designation, which says what kind of product it is, such as "Liqueur",
+          "London Dry Gin", or "Kentucky Straight Bourbon Whiskey". Not a brand, fanciful name, or marketing word.
         - alcoholContent: the alcohol statement as printed, such as "45% Alc./Vol. (90 Proof)".
         - netContents: the net contents as printed, such as "750 mL".
         - bottler: the bottler, producer, or importer name and address. For an imported product, give the importer

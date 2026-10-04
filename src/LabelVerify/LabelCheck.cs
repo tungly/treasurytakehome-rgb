@@ -70,7 +70,7 @@ public static partial class LabelCheck
             CompareText("Class / type", app.ClassType, label.ClassType),
             CompareAlcohol(app.AlcoholContent, label.AlcoholContent),
             CompareNetContents(app.NetContents, label.NetContents),
-            CompareText("Bottler name and address", app.Bottler, label.Bottler),
+            CompareBottler(app.Bottler, label.Bottler),
         };
         if (!string.IsNullOrWhiteSpace(app.CountryOfOrigin) || !string.IsNullOrWhiteSpace(label.CountryOfOrigin))
             results.Add(CompareText("Country of origin", app.CountryOfOrigin, label.CountryOfOrigin));
@@ -104,6 +104,20 @@ public static partial class LabelCheck
         if (Levenshtein(a, b) <= Math.Max(2, a.Length / 5))
             return new(field, Verdict.NeedsReview, expected, found, "Very close. Possible typo.");
         return new(field, Verdict.Mismatch, expected, found);
+    }
+
+    /// <summary>
+    /// Like CompareText, but a label that shows the whole application value plus more (a producer line,
+    /// "Distilled in Indiana", or both producer and importer) is a Match. Labels often add such lines.
+    /// </summary>
+    public static FieldResult CompareBottler(string? expected, string? found)
+    {
+        var result = CompareText("Bottler name and address", expected, found);
+        if (result.Verdict != Verdict.NeedsReview || string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(found))
+            return result;
+        if ($" {Normalize(found)} ".Contains($" {Normalize(expected)} "))
+            return result with { Verdict = Verdict.Match, Note = "The label also shows other text, such as a producer or importer line." };
+        return result;
     }
 
     /// <summary>Compares the ABV numbers, and checks that any proof on the label is twice the ABV.</summary>

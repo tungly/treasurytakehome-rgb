@@ -34,6 +34,15 @@ public class LabelCheckTests
     public void Net_contents_compares_in_milliliters(string expected, string found, Verdict verdict) =>
         Assert.Equal(verdict, LabelCheck.CompareNetContents(expected, found).Verdict);
 
+    [Theory]
+    [InlineData("Campari America, New York, NY", "DCM S.p.A., Sesto San Giovanni, Italy. Imported by Campari America, New York, NY", Verdict.Match)]
+    [InlineData("Louisville Spirits Group, Louisville, Kentucky", "Distilled in Indiana, bottled by Louisville Spirits Group, Louisville, Kentucky", Verdict.Match)]
+    [InlineData("Old Tom Distillery, Louisville, Kentucky", "Old Tom Distillery", Verdict.NeedsReview)]
+    [InlineData("Arden Imports", "Garden Imports Ltd", Verdict.NeedsReview)]
+    [InlineData("Old Tom Distillery", "Blue Ridge Spirits", Verdict.Mismatch)]
+    public void Bottler_may_show_more_than_the_application(string expected, string found, Verdict verdict) =>
+        Assert.Equal(verdict, LabelCheck.CompareBottler(expected, found).Verdict);
+
     [Fact]
     public void Warning_matches_exact_text_across_line_breaks()
     {
