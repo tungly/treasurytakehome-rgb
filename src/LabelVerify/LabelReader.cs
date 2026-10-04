@@ -17,13 +17,16 @@ public class LabelReader(ChatClient chat)
         Copy each field exactly as printed on the label. Do not fix typos, spelling, capital letters, or punctuation.
         Use null for any field that is not on the label or that you cannot read.
 
-        - brandName: the brand name.
-        - classType: the class or type designation, which says what kind of product it is, such as "Liqueur",
-          "London Dry Gin", or "Kentucky Straight Bourbon Whiskey". Not a brand, fanciful name, or marketing word.
+        - brandName: the brand name the product is sold under. For wine this is often the winery or vineyard name.
+          It is not the grape variety (such as Merlot), the class or type, or another word just because it is printed larger.
+        - classType: the class or type statement in full, exactly as printed, which says what kind of product it is,
+          such as "Liqueur", "London Dry Gin", or "Bourbon Whiskey Finished in Port Barrels". Keep every word of that
+          statement. Do not use a brand, fanciful name, or slogan instead.
         - alcoholContent: the alcohol statement as printed, such as "45% Alc./Vol. (90 Proof)".
         - netContents: the net contents as printed, such as "750 mL".
         - bottler: the bottler, producer, or importer name and address. For an imported product, give the importer
-          (the "Imported by" line) instead of the foreign producer. Leave out lead-in words like "Bottled by" or "Imported by".
+          (the "Imported by" line) instead of the foreign producer. Always include the company name, even when it is
+          the same as the brand name. Leave out lead-in words like "Bottled by" or "Imported by".
         - countryOfOrigin: the country name only, only if the label states one. Leave out words like "Product of".
         - governmentWarning: the whole warning statement, word for word, keeping its exact capital letters.
           Start with its opening words exactly as printed (for example "GOVERNMENT WARNING:") and include everything after them.

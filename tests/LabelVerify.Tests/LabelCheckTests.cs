@@ -40,6 +40,10 @@ public class LabelCheckTests
     [InlineData("Old Tom Distillery, Louisville, Kentucky", "Old Tom Distillery", Verdict.NeedsReview)]
     [InlineData("Arden Imports", "Garden Imports Ltd", Verdict.NeedsReview)]
     [InlineData("Old Tom Distillery", "Blue Ridge Spirits", Verdict.Mismatch)]
+    [InlineData("Bluemont Vineyard, Bluemont, VA", "BLUEMONT VINEYARD 18755 Foggy Bottom Road | Bluemont, VA 20135", Verdict.Match)]
+    [InlineData("Bluemont, VA", "Bluemont Vineyard, Bluemont VA 20135", Verdict.Match)]
+    [InlineData("Bluemont", "Bluemont Vineyard, Bluemont VA 20135", Verdict.NeedsReview)]
+    [InlineData("Bluemont Vineyard, Virginia", "Virginia Vineyard, Bluemont", Verdict.Mismatch)]
     public void Bottler_may_show_more_than_the_application(string expected, string found, Verdict verdict) =>
         Assert.Equal(verdict, LabelCheck.CompareBottler(expected, found).Verdict);
 
@@ -66,6 +70,26 @@ public class LabelCheckTests
         Assert.Equal(Verdict.Match, result.Verdict);
         Assert.Contains("all in capitals", result.Note);
     }
+
+    [Fact]
+    public void Missing_comma_goes_to_review_and_names_the_spot()
+    {
+        var result = LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.ToUpperInvariant().Replace("MACHINERY,", "MACHINERY"));
+        Assert.Equal(Verdict.NeedsReview, result.Verdict);
+        Assert.Contains("punctuation differs at word 38", result.Note);
+    }
+
+    [Fact]
+    public void Changed_word_in_capitals_is_rejected_and_names_the_word()
+    {
+        var result = LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.ToUpperInvariant().Replace("MAY CAUSE", "CAN CAUSE"));
+        Assert.Equal(Verdict.Mismatch, result.Verdict);
+        Assert.Contains("expected \"may\", found \"CAN\"", result.Note);
+    }
+
+    [Fact]
+    public void Missing_colon_after_the_header_goes_to_review() =>
+        Assert.Equal(Verdict.NeedsReview, LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.Replace("WARNING:", "WARNING")).Verdict);
 
     [Fact]
     public void Line_break_hyphen_in_normal_text_matches() =>

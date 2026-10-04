@@ -107,16 +107,21 @@ public static partial class LabelCheck
     }
 
     /// <summary>
-    /// Like CompareText, but a label that shows the whole application value plus more (a producer line,
-    /// "Distilled in Indiana", or both producer and importer) is a Match. Labels often add such lines.
+    /// Like CompareText, but it is a Match when every word of the application appears on the label in the same order,
+    /// even with other text around or between them: a producer line, "Distilled in Indiana", or a street address.
+    /// Needs at least two application words, so one common word cannot match by chance.
     /// </summary>
     public static FieldResult CompareBottler(string? expected, string? found)
     {
         var result = CompareText("Bottler name and address", expected, found);
-        if (result.Verdict != Verdict.NeedsReview || string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(found))
+        if (result.Verdict == Verdict.Match || string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(found))
             return result;
-        if ($" {Normalize(found)} ".Contains($" {Normalize(expected)} "))
-            return result with { Verdict = Verdict.Match, Note = "The label also shows other text, such as a producer or importer line." };
+        string[] want = Normalize(expected).Split(' '), got = Normalize(found).Split(' ');
+        int next = 0;
+        foreach (string word in got)
+            if (next < want.Length && word == want[next]) next++;
+        if (want.Length >= 2 && next == want.Length)
+            return result with { Verdict = Verdict.Match, Note = "The label shows these words in the same order, with other text such as a producer line or street address." };
         return result;
     }
 
@@ -194,19 +199,24 @@ public static partial class LabelCheck
         string got = Spaces().Replace(WordHyphen().Replace(found.Trim(), ""), " ");
         if (got == GovernmentWarning)
             return new(field, Verdict.Match, required, "Same as required wording");
-        if (!string.Equals(got, GovernmentWarning, StringComparison.OrdinalIgnoreCase))
-            return new(field, Verdict.Mismatch, required, found, FirstDifference(GovernmentWarning, got));
+        if (Normalize(got) != Normalize(GovernmentWarning))
+            return new(field, Verdict.Mismatch, required, found, "Wording differs " + FirstDifference(GovernmentWarning, got) + ".");
 
-        // Same words, different capital letters. 27 CFR 16.22 sets capitals only for "GOVERNMENT WARNING".
-        const string header = "GOVERNMENT WARNING:";
+        // Same words; capitals or punctuation differ. 27 CFR 16.22 sets capitals only for "GOVERNMENT WARNING".
+        const string header = "GOVERNMENT WARNING";
         if (!got.StartsWith(header, StringComparison.Ordinal))
-            return new(field, Verdict.Mismatch, required, found, "\"GOVERNMENT WARNING:\" must be in capital letters (27 CFR 16.22).");
-        string rest = got[header.Length..];
-        if (rest == rest.ToUpperInvariant())
+            return new(field, Verdict.Mismatch, required, found, "\"GOVERNMENT WARNING\" must be in capital letters (27 CFR 16.22).");
+        string rest = got[header.Length..], wantRest = GovernmentWarning[header.Length..];
+        var problems = new List<string>();
+        if (rest != rest.ToUpperInvariant() && Letters(rest) != Letters(wantRest))
+            problems.Add("some capital letters after \"GOVERNMENT WARNING\" differ from the required text");
+        if (!string.Equals(rest, wantRest, StringComparison.OrdinalIgnoreCase))
+            problems.Add("punctuation differs " + FirstDifference(GovernmentWarning, got));
+        if (problems.Count == 0)
             return new(field, Verdict.Match, required, "Same wording, rest in capital letters",
                 "The rest of the warning is all in capitals, which the regulation allows.");
         return new(field, Verdict.NeedsReview, required, found,
-            "Same words, but some capital letters after \"GOVERNMENT WARNING:\" differ from the required text. Check by eye.");
+            $"Same words, but {string.Join(", and ", problems)}. Small print in photos often loses punctuation. Check by eye.");
     }
 
     /// <summary>
@@ -255,16 +265,20 @@ public static partial class LabelCheck
         return amount * perUnit;
     }
 
+    /// <summary>Names the first word that differs, ignoring capitals, such as "at word 38: expected "machinery,", found "machinery"".</summary>
     static string FirstDifference(string expected, string found)
     {
         string[] want = expected.Split(' '), got = found.Split(' ');
         for (int i = 0; i < Math.Max(want.Length, got.Length); i++)
         {
             string w = i < want.Length ? want[i] : "(nothing)", g = i < got.Length ? got[i] : "(nothing)";
-            if (w != g) return $"Wording differs at word {i + 1}: expected \"{w}\", found \"{g}\".";
+            if (!string.Equals(w, g, StringComparison.OrdinalIgnoreCase))
+                return $"at word {i + 1}: expected \"{w}\", found \"{g}\"";
         }
-        return "Wording differs from the required text.";
+        return "from the required text";
     }
+
+    static string Letters(string s) => new(s.Where(char.IsLetter).ToArray());
 
     static int Levenshtein(string a, string b)
     {
