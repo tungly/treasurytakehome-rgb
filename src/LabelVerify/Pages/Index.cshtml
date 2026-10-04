@@ -42,7 +42,7 @@
             }
             </tbody>
         </table>
-        <p class="meta">Checked in @outcome.Seconds.ToString("0.0") seconds.</p>
+        <p class="meta"><span id="total-wait"></span>Reading the label took @outcome.Seconds.ToString("0.0") seconds.</p>
         @if (Model.ImageDataUrl is not null)
         {
             <img class="preview" src="@Model.ImageDataUrl" alt="The label image you uploaded">
@@ -70,10 +70,25 @@
 
 @section Scripts {
     <script>
-        document.getElementById('check-form').addEventListener('submit', () => {
-            const b = document.getElementById('check-button');
-            b.disabled = true;
-            b.textContent = 'Checking…';
+        const form = document.getElementById('check-form');
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const button = document.getElementById('check-button');
+            button.disabled = true;
+            button.textContent = 'Checking…';
+            const input = document.getElementById('LabelImage');
+            const files = new DataTransfer();
+            files.items.add(await shrinkImage(input.files[0]));
+            input.files = files.files;
+            try { sessionStorage.setItem('checkStarted', Date.now()); } catch { }
+            form.submit();
         });
+
+        const totalWait = document.getElementById('total-wait');
+        try {
+            const started = Number(sessionStorage.getItem('checkStarted'));
+            sessionStorage.removeItem('checkStarted');
+            if (totalWait && started) totalWait.textContent = `Total wait ${((Date.now() - started) / 1000).toFixed(1)} seconds. `;
+        } catch { }
     </script>
 }

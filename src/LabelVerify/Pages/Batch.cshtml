@@ -18,7 +18,7 @@
 </style>
 
 <h1>Check a batch</h1>
-<p class="lead">Upload many label images and one CSV file that lists what each application says.</p>
+<p class="lead">Upload many label images and one CSV file that lists what each application says. Keep this page open until the batch is done. A batch of 300 labels takes about 5 minutes.</p>
 
 <form class="card" id="batch-form">
     @Html.AntiForgeryToken()
@@ -55,7 +55,7 @@
     const WORKERS = 3;
     const WORDS = { Match: 'Match', NeedsReview: 'Needs review', Mismatch: 'Mismatch', Failed: 'Could not check', Pending: 'Waiting' };
     const $ = id => document.getElementById(id);
-    let jobs = [], running = false;
+    let jobs = [], running = false, started = 0;
 
     function el(tag, attrs = {}, ...children) {
         const node = document.createElement(tag);
@@ -107,16 +107,19 @@
         const parts = [`${count('Match')} match`, `${count('NeedsReview')} need review`, `${count('Mismatch')} do not match`];
         if (count('Failed')) parts.push(`${count('Failed')} could not be checked`);
         const banner = $('status-banner');
-        banner.textContent = running ? `Checking ${done} of ${jobs.length}… (${parts.join(', ')})` : `Done: ${parts.join(', ')}`;
+        const seconds = Math.round((Date.now() - started) / 1000);
+        const took = seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+        banner.textContent = running ? `Checking ${done} of ${jobs.length}… (${parts.join(', ')})` : `Done in ${took}: ${parts.join(', ')}`;
         banner.className = 'banner ' + (running ? 'Pending' : count('Mismatch') || count('Failed') ? 'Mismatch' : count('NeedsReview') ? 'NeedsReview' : 'Match');
     }
 
     async function check(job) {
+        const image = await shrinkImage(job.image);
         for (let attempt = 1; ; attempt++) {
             let data;
             try {
                 data = await post('Check', {
-                    image: job.image, 'app.BrandName': job.app.brandName, 'app.ClassType': job.app.classType,
+                    image, 'app.BrandName': job.app.brandName, 'app.ClassType': job.app.classType,
                     'app.AlcoholContent': job.app.alcoholContent, 'app.NetContents': job.app.netContents,
                     'app.Bottler': job.app.bottler, 'app.CountryOfOrigin': job.app.countryOfOrigin,
                 });
@@ -172,6 +175,7 @@
             $('progress-card').hidden = false;
             $('download').disabled = true;
             running = true;
+            started = Date.now();
             updateStatus();
             const queue = jobs.filter(j => j.status === 'Pending');
             await Promise.all(Array.from({ length: WORKERS }, () => worker(queue)));
