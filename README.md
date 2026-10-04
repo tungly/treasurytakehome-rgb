@@ -11,7 +11,7 @@ The assignment brief is in [docs/assignment.md](docs/assignment.md).
 ### Check one label
 
 1. Open the app. **Check one label** is the first page.
-2. Choose the label image (JPG or PNG, up to 10 MB).
+2. Choose the label images: front, back, and neck if they are separate (up to 4 images, JPG or PNG, 10 MB each). Most bottles print the government warning and bottler on the back, so a front-only photo will show the warning as missing.
 3. Type in what the application says: brand name, class/type, alcohol content, net contents, and bottler name and address. Fill in the country of origin only for imports.
 4. Press **Check label**. The result usually appears in about 2 to 3 seconds. The page shows the total wait and how long reading the label took.
 
@@ -24,11 +24,11 @@ The government warning is always checked against the required wording, so there 
 3. Choose a CSV file with one row per label. Use **Download a CSV template** on the page, or see [samples/applications.csv](samples/applications.csv).
 4. Press **Check all labels**. Keep the page open until the batch is done: results live only in the page, and a 300-label batch takes about 5 minutes. Results fill in as each label finishes. Use **Show only labels that need attention** to hide the labels that match, and **Download results (CSV)** to save them.
 
-CSV columns: `file`, `brand_name`, `class_type`, `alcohol_content`, `net_contents`, `bottler`, `country_of_origin`. The `file` column must match the image's file name. Leave `country_of_origin` blank for domestic products.
+CSV columns: `file`, `brand_name`, `class_type`, `alcohol_content`, `net_contents`, `bottler`, `country_of_origin`. The `file` column lists the label's image file names. Separate several images of one label with `|`, for example `front.jpg|back.jpg`. Leave `country_of_origin` blank for domestic products.
 
 ### Try it with the sample files
 
-The [samples](samples/) folder has 10 test labels and a matching CSV. Upload all 10 images and `applications.csv` on the batch page.
+The [samples](samples/) folder has 11 test labels (12 images) and a matching CSV. Upload all 12 images and `applications.csv` on the batch page.
 
 | Sample | Expected result |
 |---|---|
@@ -40,6 +40,7 @@ The [samples](samples/) folder has 10 test labels and a matching CSV. Upload all
 | `photo-old-tom-glare-on-warning.jpg` | Needs review: glare hides part of the warning, so the wording cannot be trusted |
 | `photo-old-tom-title-case-dim-blurry.jpg` | Mismatch: same title-case warning, in a dim, blurry photo |
 | Other `photo-old-tom-*.jpg` | Everything matches: the good label tilted, with glare on the brand, and dim and blurry |
+| `old-tom-front.png` + `old-tom-back.png` | Everything matches: brand and alcohol on the front, bottler and warning on the back. The front alone gives a Mismatch, because the warning is missing |
 
 ## Running it locally
 
@@ -106,7 +107,7 @@ The plan is in Central US because the free-trial subscription had no B1 quota in
 
 ## How it works
 
-1. **Read.** The browser first shrinks large photos to 2048 pixels on the long side, so a 2 MB phone photo uploads as about 0.3 MB. The image then goes to Azure OpenAI in one call ([LabelReader.cs](src/LabelVerify/LabelReader.cs)). The model must answer in a fixed JSON shape, at temperature 0, and is told to copy text exactly as printed, without fixing typos or capital letters.
+1. **Read.** The browser first shrinks large photos to 2048 pixels on the long side, so a 2 MB phone photo uploads as about 0.3 MB. All images of one label (front, back, neck) then go to Azure OpenAI together in one call ([LabelReader.cs](src/LabelVerify/LabelReader.cs)). The model must answer in a fixed JSON shape, at temperature 0, and is told to copy text exactly as printed, without fixing typos or capital letters.
 2. **Compare.** Plain C# code compares each field with the application ([LabelCheck.cs](src/LabelVerify/LabelCheck.cs)). The model never decides pass or fail, so every rule is unit tested and easy to explain.
 3. **Show.** The page shows each field side by side with its result and a short reason.
 
@@ -122,7 +123,7 @@ The plan is in Central US because the free-trial subscription had no B1 quota in
 | Government warning readability | If glare, blur or cropping hides any part of the warning, the wording result becomes **Needs review**, because the model may have guessed the hidden words. The model is told to write `[unreadable]` instead of guessing. |
 | Government warning type size | If the warning letters look clearly smaller than the smallest other text, or the warning is faint or hard to find, it goes to **Needs review**. A photo has no scale, so this is a judgment, not a measurement of the 27 CFR 16.22 minimum sizes. |
 
-A field the model could not find goes to **Needs review** ("Check by eye"), not **Mismatch**, because the model may have failed to read it. A missing government warning is always a **Mismatch**.
+A field the model could not find goes to **Needs review** ("Check by eye"), not **Mismatch**, because the model may have failed to read it. A missing government warning is always a **Mismatch**, and the bold and type-size rows are then left out.
 
 ### Batch processing
 
@@ -148,9 +149,10 @@ The server reads the CSV ([BatchCsv.cs](src/LabelVerify/BatchCsv.cs)). The brows
 - **Bold detection is a hint, not a ruling.** On 10 identical copies of a label whose whole warning is bold, the model called the body "not bold" once, so 1 in 10 showed **Match** instead of **Needs review**. Real photos will likely do worse. Agents should confirm bold type by eye.
 - **Hard-to-read warnings.** Before the readability check was added, a photo with glare over the warning came back as an exact match, so the model can fill in text it cannot fully see. With the check, that photo goes to **Needs review** (2 of 2 runs). The model still decides for itself whether the warning is readable, so agents should look at the warning on any poor photo.
 - **Warning type size is a judgment, not a measurement.** The tiny-warning sample was flagged in 5 of 5 runs, and the normal labels in 0 of 9. The legal minimum sizes in 27 CFR 16.22 (for example 2 mm for containers over 237 mL) cannot be checked from a photo without knowing its scale.
-- **Test images are synthetic.** The samples are drawn labels and simulated photos (tilt, glare, dim light, blur). No real bottle photos were tested.
+- **Test images are mostly synthetic.** The samples are drawn labels and simulated photos (tilt, glare, dim light, blur). One real bottle photo was tried; it was read correctly but took longer.
+- **Several images per label.** Front and back were combined correctly 6 of 7 times at first. The miss left out the bottler, which showed as **Needs review**, not a wrong pass. After adding a prompt hint that the back label often holds the bottler and warning, it was correct 11 of 11 times.
 - **Batch speed is limited by the Azure OpenAI quota.** The deployment allows 100 requests per minute. Measured: 40 labels in 40 seconds, so a 300-label batch takes about 5 minutes. Several agents running batches at the same time share that quota.
-- **Speed.** Reading a label took 1.7 to 2.8 seconds in testing, including a 4032×3024 phone photo. The total wait seen in the browser was 2.7 to 4.0 seconds, under the 5-second target. A slow network or the first request after the app has been idle can add time.
+- **Speed.** Reading a label took 1.7 to 2.8 seconds in testing, including a 4032×3024 phone photo. Front and back together took 2.0 to 2.1 seconds. One real bottle photo (front only) took 4.3 seconds to read and 5.2 seconds in total, over the target, so real photos may be slower than the samples. The total wait seen in the browser was 2.7 to 4.0 seconds, under the 5-second target. A slow network or the first request after the app has been idle can add time.
 - **No sign-in.** Anyone with the link can use the prototype. A production version would need sign-in, audit logging and a records retention policy.
 - **File types.** JPG, PNG, WebP and GIF only. iPhone HEIC photos must be saved as JPG first.
 - **Model lifetime.** Azure lists `gpt-4.1-mini` as Legacy, retiring 2027-04-14. Moving to a newer model means changing the deployment, not the code. The newer `gpt-5.4-mini` had no quota on the free-trial subscription used here.
