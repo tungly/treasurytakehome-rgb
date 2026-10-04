@@ -1,0 +1,197 @@
+@page
+@model LabelVerify.Pages.BatchModel
+@{
+    ViewData["Title"] = "Check a batch";
+    string template = string.Join(",", BatchCsv.Columns) + "\n" +
+        "old-tom.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45%,750 mL,\"Old Tom Distillery, Louisville, Kentucky\",\n";
+}
+<style>
+    .rows details { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    .rows summary { cursor: pointer; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+    .rows summary .file { font-weight: 600; overflow-wrap: anywhere; }
+    .rows details table { margin-top: 10px; }
+    .rows.problems-only details[data-status=Match] { display: none; }
+    progress { width: 100%; height: 22px; }
+    .toolbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+    .toolbar label { margin: 0; font-weight: 400; display: flex; gap: 8px; align-items: center; }
+    .toolbar button { margin-top: 0; }
+</style>
+
+<h1>Check a batch</h1>
+<p class="lead">Upload many label images and one CSV file that lists what each application says.</p>
+
+<form class="card" id="batch-form">
+    @Html.AntiForgeryToken()
+    <h2>1. Label images</h2>
+    <label for="images">Choose all the label images <small>(JPG or PNG, up to 10 MB each)</small></label>
+    <input type="file" id="images" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
+
+    <h2 style="margin-top:28px">2. Application data</h2>
+    <label for="csv">CSV file with one row per label <small>(the file column must match each image's file name)</small></label>
+    <input type="file" id="csv" accept=".csv,text/csv" required>
+    <p class="meta">
+        Columns: @string.Join(", ", BatchCsv.Columns). Leave country_of_origin blank for domestic products.
+        <a href="data:text/csv;charset=utf-8,@Uri.EscapeDataString(template)" download="label-batch-template.csv">Download a CSV template</a>
+    </p>
+    <button type="submit" id="run-button">Check all labels</button>
+</form>
+
+<div class="error" id="errors" role="alert" hidden></div>
+
+<section class="card" id="progress-card" hidden aria-live="polite">
+    <div class="banner Pending" id="status-banner">Starting…</div>
+    <progress id="progress" value="0" max="1"></progress>
+    <div class="toolbar">
+        <label><input type="checkbox" id="problems-only"> Show only labels that need attention</label>
+        <button type="button" class="secondary" id="download" disabled>Download results (CSV)</button>
+    </div>
+    <div class="rows" id="rows"></div>
+</section>
+
+@section Scripts {
+<script>
+    const token = document.querySelector('input[name=__RequestVerificationToken]').value;
+    // ponytail: fixed pacing for one 100-requests-per-minute deployment (about 2 s per label); make it a setting if quota grows.
+    const WORKERS = 3;
+    const WORDS = { Match: 'Match', NeedsReview: 'Needs review', Mismatch: 'Mismatch', Failed: 'Could not check', Pending: 'Waiting' };
+    const $ = id => document.getElementById(id);
+    let jobs = [], running = false;
+
+    function el(tag, attrs = {}, ...children) {
+        const node = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+        node.append(...children.filter(c => c != null));
+        return node;
+    }
+
+    async function post(handler, fields) {
+        const form = new FormData();
+        form.append('__RequestVerificationToken', token);
+        for (const [k, v] of Object.entries(fields)) if (v != null) form.append(k, v);
+        const response = await fetch(`?handler=${handler}`, { method: 'POST', body: form });
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
+        return response.json();
+    }
+
+    function showErrors(messages) {
+        const box = $('errors');
+        box.replaceChildren(el('strong', {}, 'Fix these problems and try again:'), el('ul', {}, ...messages.map(m => el('li', {}, m))));
+        box.hidden = false;
+    }
+
+    function fieldTable(results) {
+        const rows = results.map(r => el('tr', {},
+            el('td', {}, el('strong', {}, r.field)),
+            el('td', { 'data-label': 'Result' }, el('span', { class: `verdict ${r.verdict}` }, WORDS[r.verdict]), r.note ? el('span', { class: 'note' }, r.note) : null),
+            el('td', { 'data-label': 'Application says' }, r.expected ?? '(blank)'),
+            el('td', { 'data-label': 'Label says' }, r.found ?? '(not found)')));
+        return el('table', { class: 'fields' },
+            el('thead', {}, el('tr', {}, ...['Field', 'Result', 'Application says', 'Label says'].map(h => el('th', {}, h)))),
+            el('tbody', {}, ...rows));
+    }
+
+    function render(job) {
+        const firstProblem = job.results?.find(r => r.verdict === job.status);
+        const reason = job.error ?? (firstProblem && job.status !== 'Match' ? `${firstProblem.field}: ${firstProblem.note || 'see details'}` : '');
+        const summary = el('summary', {}, el('span', { class: `verdict ${job.status}` }, WORDS[job.status]), el('span', { class: 'file' }, job.file), el('span', { class: 'note' }, reason));
+        const node = el('details', { 'data-status': job.status }, summary, job.results ? fieldTable(job.results) : null);
+        job.node ? job.node.replaceWith(node) : $('rows').append(node);
+        job.node = node;
+    }
+
+    function updateStatus() {
+        const count = s => jobs.filter(j => j.status === s).length;
+        const done = jobs.length - count('Pending');
+        $('progress').value = done;
+        $('progress').max = jobs.length;
+        const parts = [`${count('Match')} match`, `${count('NeedsReview')} need review`, `${count('Mismatch')} do not match`];
+        if (count('Failed')) parts.push(`${count('Failed')} could not be checked`);
+        const banner = $('status-banner');
+        banner.textContent = running ? `Checking ${done} of ${jobs.length}… (${parts.join(', ')})` : `Done: ${parts.join(', ')}`;
+        banner.className = 'banner ' + (running ? 'Pending' : count('Mismatch') || count('Failed') ? 'Mismatch' : count('NeedsReview') ? 'NeedsReview' : 'Match');
+    }
+
+    async function check(job) {
+        for (let attempt = 1; ; attempt++) {
+            let data;
+            try {
+                data = await post('Check', {
+                    image: job.image, 'app.BrandName': job.app.brandName, 'app.ClassType': job.app.classType,
+                    'app.AlcoholContent': job.app.alcoholContent, 'app.NetContents': job.app.netContents,
+                    'app.Bottler': job.app.bottler, 'app.CountryOfOrigin': job.app.countryOfOrigin,
+                });
+            } catch {
+                data = { error: 'Could not reach the server. Try this label again.' };
+            }
+            if (data.busy && attempt < 4) {
+                await new Promise(resolve => setTimeout(resolve, 20000));
+                continue;
+            }
+            Object.assign(job, { status: data.overall ?? 'Failed', results: data.results, error: data.error });
+            return;
+        }
+    }
+
+    async function worker(queue) {
+        for (let job = queue.shift(); job; job = queue.shift()) {
+            await check(job);
+            render(job);
+            updateStatus();
+        }
+    }
+
+    function toCsv() {
+        // Label text comes from uploaded images, so stop spreadsheet apps from running it as a formula.
+        const quote = v => `"${String(v ?? '').replace(/^[=+\-@@\t\r]/, "'$&").replaceAll('"', '""')}"`;
+        const lines = [['file', 'overall', 'field', 'result', 'application_says', 'label_says', 'note']];
+        for (const j of jobs) {
+            if (!j.results) lines.push([j.file, WORDS[j.status], '', '', '', '', j.error]);
+            else for (const r of j.results) lines.push([j.file, WORDS[j.status], r.field, WORDS[r.verdict], r.expected, r.found, r.note]);
+        }
+        return lines.map(l => l.map(quote).join(',')).join('\r\n');
+    }
+
+    $('batch-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        $('errors').hidden = true;
+        $('run-button').disabled = true;
+        try {
+            const parsed = await post('ParseCsv', { csv: $('csv').files[0] });
+            if (parsed.errors.length) return showErrors(parsed.errors);
+
+            const images = new Map([...$('images').files].map(f => [f.name.toLowerCase(), f]));
+            jobs = parsed.rows.map(r => ({ file: r.file, app: r.app, image: images.get(r.file.toLowerCase()), status: 'Pending' }));
+            const listed = new Set(jobs.map(j => j.file.toLowerCase()));
+            for (const name of images.keys())
+                if (!listed.has(name)) jobs.push({ file: images.get(name).name, status: 'Failed', error: 'This image has no row in the CSV.' });
+            for (const j of jobs)
+                if (j.status === 'Pending' && !j.image) Object.assign(j, { status: 'Failed', error: 'This image was not uploaded.' });
+
+            $('rows').replaceChildren();
+            jobs.forEach(render);
+            $('progress-card').hidden = false;
+            $('download').disabled = true;
+            running = true;
+            updateStatus();
+            const queue = jobs.filter(j => j.status === 'Pending');
+            await Promise.all(Array.from({ length: WORKERS }, () => worker(queue)));
+            running = false;
+            updateStatus();
+            $('download').disabled = false;
+        } catch (error) {
+            running = false;
+            showErrors([`Something went wrong: ${error.message}. Reload the page and try again.`]);
+        } finally {
+            $('run-button').disabled = false;
+        }
+    });
+
+    $('problems-only').addEventListener('change', e => $('rows').classList.toggle('problems-only', e.target.checked));
+    $('download').addEventListener('click', () => {
+        const link = el('a', { href: URL.createObjectURL(new Blob([toCsv()], { type: 'text/csv' })), download: 'label-check-results.csv' });
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+    window.addEventListener('beforeunload', e => { if (running) e.preventDefault(); });
+</script>
+}

@@ -1,8 +1,11 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace LabelVerify;
 
+/// <summary>Ordered from best to worst, so the highest value is the worst result.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<Verdict>))]
 public enum Verdict { Match, NeedsReview, Mismatch }
 
 /// <summary>The result of checking one field. Expected is the application value; Found is what the label says.</summary>
@@ -39,6 +42,10 @@ public static partial class LabelCheck
         "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages " +
         "during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs " +
         "your ability to drive a car or operate machinery, and may cause health problems.";
+
+    /// <summary>The worst result wins: any Mismatch makes the label a Mismatch, then any Needs review.</summary>
+    public static Verdict Overall(IEnumerable<FieldResult> results) =>
+        results.Select(r => r.Verdict).DefaultIfEmpty(Verdict.Match).Max();
 
     public static List<FieldResult> Compare(Application app, ExtractedLabel label)
     {

@@ -15,6 +15,7 @@ var client = new AzureOpenAIClient(
     new ApiKeyCredential(Setting("Key")),
     new AzureOpenAIClientOptions { NetworkTimeout = TimeSpan.FromSeconds(30) });
 builder.Services.AddSingleton(new LabelReader(client.GetChatClient(Setting("Deployment"))));
+builder.Services.AddSingleton<LabelChecker>();
 
 var app = builder.Build();
 app.MapRazorPages();

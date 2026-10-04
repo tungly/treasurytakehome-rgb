@@ -1,134 +1,79 @@
 @page
 @model LabelVerify.Pages.IndexModel
 @{
-    Layout = null;
-    int mismatches = Model.Results?.Count(r => r.Verdict == Verdict.Mismatch) ?? 0;
-    int reviews = Model.Results?.Count(r => r.Verdict == Verdict.NeedsReview) ?? 0;
+    ViewData["Title"] = "Check one label";
+    var outcome = Model.Outcome;
+    var results = outcome?.Results;
+    int problems = results?.Count(r => r.Verdict == outcome!.Overall) ?? 0;
 }
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Label Check</title>
-    <style>
-        :root { --ink: #1a1a1a; --muted: #555; --line: #c8c8c8; --bg: #f6f6f4; --card: #fff;
-                --ok: #1e6b34; --ok-bg: #e3f3e7; --warn: #8a5a00; --warn-bg: #fff3d6; --bad: #a3191f; --bad-bg: #fde4e4;
-                --accent: #1d4ed8; }
-        * { box-sizing: border-box; }
-        body { margin: 0; background: var(--bg); color: var(--ink); font: 19px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-        main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
-        h1 { font-size: 30px; margin: 0 0 4px; }
-        h2 { font-size: 22px; margin: 0 0 12px; }
-        p.lead { margin: 0 0 24px; color: var(--muted); }
-        .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-        label { display: block; font-weight: 600; margin: 14px 0 4px; }
-        label small { font-weight: 400; color: var(--muted); }
-        input[type=text], input[type=file] { width: 100%; font-size: 19px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 8px; background: #fff; }
-        input:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
-        button { margin-top: 20px; font-size: 22px; font-weight: 700; padding: 14px 32px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
-        button:disabled { background: #6b7280; cursor: wait; }
-        .banner { font-size: 24px; font-weight: 700; padding: 16px 20px; border-radius: 10px; margin-bottom: 16px; }
-        .banner.ok { background: var(--ok-bg); color: var(--ok); }
-        .banner.warn { background: var(--warn-bg); color: var(--warn); }
-        .banner.bad { background: var(--bad-bg); color: var(--bad); }
-        .error { background: var(--bad-bg); color: var(--bad); font-weight: 600; padding: 14px 18px; border-radius: 10px; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
-        th:nth-child(1) { width: 20%; } th:nth-child(2) { width: 22%; }
-        td[data-label$="says"] { overflow-wrap: anywhere; }
-        th { font-size: 16px; color: var(--muted); }
-        .verdict { display: inline-block; white-space: nowrap; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
-        .Match { background: var(--ok-bg); color: var(--ok); }
-        .NeedsReview { background: var(--warn-bg); color: var(--warn); }
-        .Mismatch { background: var(--bad-bg); color: var(--bad); }
-        .note { display: block; font-size: 16px; color: var(--muted); }
-        .meta { font-size: 16px; color: var(--muted); }
-        .preview { max-width: 100%; max-height: 420px; border: 1px solid var(--line); border-radius: 8px; }
-        @@media (max-width: 640px) {
-            .grid { grid-template-columns: 1fr; }
-            thead { display: none; }
-            tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); }
-            td { display: block; border: 0; padding: 2px 0; }
-            td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; }
-        }
-    </style>
-</head>
-<body>
-<main>
-    <h1>Label Check</h1>
-    <p class="lead">Upload a label image, type in what the application says, then press <strong>Check label</strong>.</p>
+<h1>Check one label</h1>
+<p class="lead">Upload a label image, type in what the application says, then press <strong>Check label</strong>.</p>
 
-    @if (Model.Error is not null)
-    {
-        <div class="error" role="alert">@Model.Error</div>
-    }
+@if (outcome?.Error is not null)
+{
+    <div class="error" role="alert">@outcome.Error</div>
+}
 
-    @if (Model.Results is not null)
-    {
-        <section class="card" aria-live="polite">
-            @if (mismatches > 0)
+@if (results is not null)
+{
+    <section class="card" aria-live="polite">
+        <div class="banner @outcome!.Overall">
+            @(outcome.Overall switch
             {
-                <div class="banner bad">Does not match: @mismatches problem@(mismatches == 1 ? "" : "s") found</div>
-            }
-            else if (reviews > 0)
-            {
-                <div class="banner warn">Needs your review: @reviews item@(reviews == 1 ? "" : "s")</div>
-            }
-            else
-            {
-                <div class="banner ok">Everything matches</div>
-            }
-            <table>
-                <thead><tr><th>Field</th><th>Result</th><th>Application says</th><th>Label says</th></tr></thead>
-                <tbody>
-                @foreach (var r in Model.Results)
-                {
-                    <tr>
-                        <td><strong>@r.Field</strong></td>
-                        <td data-label="Result">
-                            <span class="verdict @r.Verdict">@(r.Verdict switch { Verdict.Match => "Match", Verdict.NeedsReview => "Needs review", _ => "Mismatch" })</span>
-                            @if (r.Note.Length > 0) { <span class="note">@r.Note</span> }
-                        </td>
-                        <td data-label="Application says">@(r.Expected ?? "(blank)")</td>
-                        <td data-label="Label says">@(r.Found ?? "(not found)")</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-            <p class="meta">Checked in @Model.Seconds.ToString("0.0") seconds.</p>
-            @if (Model.ImageDataUrl is not null)
-            {
-                <img class="preview" src="@Model.ImageDataUrl" alt="The label image you uploaded">
-            }
-        </section>
-    }
-
-    <form method="post" enctype="multipart/form-data" class="card" id="check-form">
-        <h2>1. Label image</h2>
-        <label for="LabelImage">Photo or scan of the label <small>(JPG or PNG, up to 10 MB)</small></label>
-        <input type="file" id="LabelImage" name="LabelImage" accept="image/jpeg,image/png,image/webp,image/gif" required>
-
-        <h2 style="margin-top:28px">2. What the application says</h2>
-        <div class="grid">
-            <div><label asp-for="App.BrandName">Brand name</label><input asp-for="App.BrandName" type="text" required></div>
-            <div><label asp-for="App.ClassType">Class / type</label><input asp-for="App.ClassType" type="text" required></div>
-            <div><label asp-for="App.AlcoholContent">Alcohol content <small>(for example 45%)</small></label><input asp-for="App.AlcoholContent" type="text" required></div>
-            <div><label asp-for="App.NetContents">Net contents <small>(for example 750 mL)</small></label><input asp-for="App.NetContents" type="text" required></div>
-            <div><label asp-for="App.Bottler">Bottler name and address</label><input asp-for="App.Bottler" type="text" required></div>
-            <div><label asp-for="App.CountryOfOrigin">Country of origin <small>(imports only)</small></label><input asp-for="App.CountryOfOrigin" type="text"></div>
+                Verdict.Mismatch => $"Does not match: {problems} problem{(problems == 1 ? "" : "s")} found",
+                Verdict.NeedsReview => $"Needs your review: {problems} item{(problems == 1 ? "" : "s")}",
+                _ => "Everything matches",
+            })
         </div>
-        <p class="meta">The government warning is checked against the required wording automatically.</p>
-        <button type="submit" id="check-button">Check label</button>
-    </form>
-</main>
-<script>
-    document.getElementById('check-form').addEventListener('submit', () => {
-        const b = document.getElementById('check-button');
-        b.disabled = true;
-        b.textContent = 'Checking…';
-    });
-</script>
-</body>
-</html>
+        <table class="fields">
+            <thead><tr><th>Field</th><th>Result</th><th>Application says</th><th>Label says</th></tr></thead>
+            <tbody>
+            @foreach (var r in results)
+            {
+                <tr>
+                    <td><strong>@r.Field</strong></td>
+                    <td data-label="Result">
+                        <span class="verdict @r.Verdict">@(r.Verdict switch { Verdict.Match => "Match", Verdict.NeedsReview => "Needs review", _ => "Mismatch" })</span>
+                        @if (r.Note.Length > 0) { <span class="note">@r.Note</span> }
+                    </td>
+                    <td data-label="Application says">@(r.Expected ?? "(blank)")</td>
+                    <td data-label="Label says">@(r.Found ?? "(not found)")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="meta">Checked in @outcome.Seconds.ToString("0.0") seconds.</p>
+        @if (Model.ImageDataUrl is not null)
+        {
+            <img class="preview" src="@Model.ImageDataUrl" alt="The label image you uploaded">
+        }
+    </section>
+}
+
+<form method="post" enctype="multipart/form-data" class="card" id="check-form">
+    <h2>1. Label image</h2>
+    <label for="LabelImage">Photo or scan of the label <small>(JPG or PNG, up to 10 MB)</small></label>
+    <input type="file" id="LabelImage" name="LabelImage" accept="image/jpeg,image/png,image/webp,image/gif" required>
+
+    <h2 style="margin-top:28px">2. What the application says</h2>
+    <div class="grid">
+        <div><label asp-for="App.BrandName">Brand name</label><input asp-for="App.BrandName" type="text" required></div>
+        <div><label asp-for="App.ClassType">Class / type</label><input asp-for="App.ClassType" type="text" required></div>
+        <div><label asp-for="App.AlcoholContent">Alcohol content <small>(for example 45%)</small></label><input asp-for="App.AlcoholContent" type="text" required></div>
+        <div><label asp-for="App.NetContents">Net contents <small>(for example 750 mL)</small></label><input asp-for="App.NetContents" type="text" required></div>
+        <div><label asp-for="App.Bottler">Bottler name and address</label><input asp-for="App.Bottler" type="text" required></div>
+        <div><label asp-for="App.CountryOfOrigin">Country of origin <small>(imports only)</small></label><input asp-for="App.CountryOfOrigin" type="text"></div>
+    </div>
+    <p class="meta">The government warning is checked against the required wording automatically.</p>
+    <button type="submit" id="check-button">Check label</button>
+</form>
+
+@section Scripts {
+    <script>
+        document.getElementById('check-form').addEventListener('submit', () => {
+            const b = document.getElementById('check-button');
+            b.disabled = true;
+            b.textContent = 'Checking…';
+        });
+    </script>
+}
