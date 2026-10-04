@@ -61,6 +61,29 @@ public class LabelCheckTests
     public void Missing_warning_is_rejected() =>
         Assert.Equal(Verdict.Mismatch, LabelCheck.CheckWarningText(null).Verdict);
 
+    [Fact]
+    public void Exact_warning_that_is_partly_unreadable_goes_to_review()
+    {
+        var result = LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning, fullyReadable: false);
+        Assert.Equal(Verdict.NeedsReview, result.Verdict);
+        Assert.Contains("hard to read", result.Note);
+    }
+
+    [Fact]
+    public void Unreadable_warning_keeps_the_wording_difference_in_the_note()
+    {
+        var result = LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.Replace("birth defects", "[unreadable]"), fullyReadable: false);
+        Assert.Equal(Verdict.NeedsReview, result.Verdict);
+        Assert.Contains("\"birth\"", result.Note);
+    }
+
+    [Theory]
+    [InlineData(false, Verdict.Match)]
+    [InlineData(true, Verdict.NeedsReview)]
+    [InlineData(null, Verdict.NeedsReview)]
+    public void Tiny_or_unclear_warning_size_goes_to_review(bool? tooSmall, Verdict verdict) =>
+        Assert.Equal(verdict, LabelCheck.CheckWarningSize(tooSmall).Verdict);
+
     [Theory]
     [InlineData(true, false, Verdict.Match)]
     [InlineData(false, false, Verdict.NeedsReview)]
@@ -76,7 +99,7 @@ public class LabelCheckTests
             "Old Tom Distillery, Louisville, KY", null);
         var label = new ExtractedLabel("OLD TOM DISTILLERY", "Kentucky Straight Bourbon Whiskey",
             "45% Alc./Vol. (90 Proof)", "750 mL", "Old Tom Distillery, Louisville, KY", null,
-            LabelCheck.GovernmentWarning, true, false);
+            LabelCheck.GovernmentWarning, true, false, true, false);
 
         var results = LabelCheck.Compare(app, label);
 

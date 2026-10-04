@@ -29,6 +29,10 @@ LABELS = {
         brand="GLEN ARDEN", kind="Single Malt Scotch Whisky", abv="43% Alc./Vol.",
         net="700 mL", bottler="Imported by Arden Imports, New York, NY", origin="Product of Scotland",
         header="GOVERNMENT WARNING:", header_bold=True, body_bold=True),
+    "old-tom-tiny-warning": dict(
+        brand="OLD TOM DISTILLERY", kind="Kentucky Straight Bourbon Whiskey", abv="45% Alc./Vol. (90 Proof)",
+        net="750 mL", bottler="Bottled by Old Tom Distillery, Louisville, Kentucky",
+        header="GOVERNMENT WARNING:", header_bold=True, body_bold=False, warning_size=8),
 }
 
 
@@ -46,12 +50,12 @@ def warning(draw: ImageDraw.ImageDraw, y: int, spec: dict, left: int, right: int
     """Wraps the warning word by word so the header and body can use different weights."""
     words = [(w, spec["header_bold"]) for w in spec["header"].split()]
     words += [(w, spec["body_bold"]) for w in WARNING_BODY.split()]
-    x, size = left, 19
+    x, size = left, spec.get("warning_size", 19)
     for word, bold in words:
         f = font(bold, size)
         w = draw.textlength(word + " ", font=f)
         if x + w > right:
-            x, y = left, y + size + 6
+            x, y = left, y + size + max(2, size // 3)
         draw.text((x, y), word, font=f, fill="#2b1d0e")
         x += w
 

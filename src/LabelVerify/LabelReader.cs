@@ -19,8 +19,14 @@ public class LabelReader(ChatClient chat)
         - countryOfOrigin: the country name only, only if the label states one. Leave out words like "Product of".
         - governmentWarning: the whole warning statement, word for word, keeping its exact capital letters.
           Start with its opening words exactly as printed (for example "GOVERNMENT WARNING:") and include everything after them.
+          Never fill in words you cannot see. Write [unreadable] in place of any part you cannot read.
         - warningHeaderBold: true if the words "GOVERNMENT WARNING" are in bold type, false if not, null if you cannot tell.
         - warningBodyBold: true if the rest of the warning is in bold type, false if not, null if you cannot tell.
+        - warningFullyReadable: true if every word of the warning is clearly readable in this image. false if glare, blur,
+          shadow, damage, or cropping hides or blurs any part of it, even if you could guess the missing words. null if there is no warning.
+        - warningTooSmall: compare the height of the warning's letters with the smallest other text on the label
+          (often the bottler or address line). true if the warning letters are clearly smaller than that text,
+          or the warning is crammed, faint, or hard to find. false if they are about the same size or larger. null if you cannot tell.
         """;
 
     static readonly ChatResponseFormat Format = ChatResponseFormat.CreateJsonSchemaFormat("label", BinaryData.FromString("""
@@ -28,7 +34,8 @@ public class LabelReader(ChatClient chat)
               "type": "object",
               "additionalProperties": false,
               "required": ["brandName", "classType", "alcoholContent", "netContents", "bottler",
-                           "countryOfOrigin", "governmentWarning", "warningHeaderBold", "warningBodyBold"],
+                           "countryOfOrigin", "governmentWarning", "warningHeaderBold", "warningBodyBold",
+                           "warningFullyReadable", "warningTooSmall"],
               "properties": {
                 "brandName": { "type": ["string", "null"] },
                 "classType": { "type": ["string", "null"] },
@@ -38,7 +45,9 @@ public class LabelReader(ChatClient chat)
                 "countryOfOrigin": { "type": ["string", "null"] },
                 "governmentWarning": { "type": ["string", "null"] },
                 "warningHeaderBold": { "type": ["boolean", "null"] },
-                "warningBodyBold": { "type": ["boolean", "null"] }
+                "warningBodyBold": { "type": ["boolean", "null"] },
+                "warningFullyReadable": { "type": ["boolean", "null"] },
+                "warningTooSmall": { "type": ["boolean", "null"] }
               }
             }
             """), jsonSchemaIsStrict: true);

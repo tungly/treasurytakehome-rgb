@@ -23,6 +23,8 @@ public record Application(
 /// <summary>What was read off the label image. A null field means it was not found on the label.</summary>
 /// <param name="WarningHeaderBold">Whether "GOVERNMENT WARNING:" looks bold. Null means the reader could not tell.</param>
 /// <param name="WarningBodyBold">Whether the rest of the warning looks bold. Null means the reader could not tell.</param>
+/// <param name="WarningFullyReadable">False when glare, blur or cropping hides part of the warning. Null means no warning.</param>
+/// <param name="WarningTooSmall">Whether the warning looks tiny or hard to find next to the other text. Null means the reader could not tell.</param>
 public record ExtractedLabel(
     string? BrandName,
     string? ClassType,
@@ -32,7 +34,9 @@ public record ExtractedLabel(
     string? CountryOfOrigin,
     string? GovernmentWarning,
     bool? WarningHeaderBold,
-    bool? WarningBodyBold);
+    bool? WarningBodyBold,
+    bool? WarningFullyReadable,
+    bool? WarningTooSmall);
 
 /// <summary>Compares a label against its application, one field at a time.</summary>
 public static partial class LabelCheck
@@ -59,8 +63,9 @@ public static partial class LabelCheck
         };
         if (!string.IsNullOrWhiteSpace(app.CountryOfOrigin) || !string.IsNullOrWhiteSpace(label.CountryOfOrigin))
             results.Add(CompareText("Country of origin", app.CountryOfOrigin, label.CountryOfOrigin));
-        results.Add(CheckWarningText(label.GovernmentWarning));
+        results.Add(CheckWarningText(label.GovernmentWarning, label.WarningFullyReadable));
         results.Add(CheckWarningBold(label.WarningHeaderBold, label.WarningBodyBold));
+        results.Add(CheckWarningSize(label.WarningTooSmall));
         return results;
     }
 
@@ -123,8 +128,34 @@ public static partial class LabelCheck
         return new(field, Verdict.Mismatch, expected, found, $"Application is {want:0.#} mL, label is {got:0.#} mL.");
     }
 
-    /// <summary>The wording must be exact, capitals included. Only line breaks and extra spaces are forgiven.</summary>
-    public static FieldResult CheckWarningText(string? found)
+    /// <summary>
+    /// The wording must be exact, capitals included. Only line breaks and extra spaces are forgiven.
+    /// If part of the warning is hard to read in the photo, any result goes to a person, because the reader may have guessed words.
+    /// </summary>
+    public static FieldResult CheckWarningText(string? found, bool? fullyReadable = true)
+    {
+        var result = CheckWarningWording(found);
+        if (fullyReadable != false)
+            return result;
+        string note = "Part of the warning is hard to read in this photo, so the wording may be guessed. Check by eye.";
+        return result with { Verdict = Verdict.NeedsReview, Note = result.Note.Length > 0 ? $"{note} {result.Note}" : note };
+    }
+
+    /// <summary>Flags a warning that looks tiny or hard to find. A photo has no scale, so this is a judgment, not a measurement.</summary>
+    public static FieldResult CheckWarningSize(bool? tooSmall)
+    {
+        const string field = "Government warning type size";
+        const string rule = "Easy to find, not tiny";
+        return tooSmall switch
+        {
+            false => new(field, Verdict.Match, rule, "Not noticeably small"),
+            true => new(field, Verdict.NeedsReview, rule, "Looks tiny or hard to find",
+                "Check the type size by eye against the minimum sizes in 27 CFR 16.22."),
+            null => new(field, Verdict.NeedsReview, rule, null, "Could not tell from the image. Check by eye."),
+        };
+    }
+
+    static FieldResult CheckWarningWording(string? found)
     {
         const string field = "Government warning wording";
         const string required = "Required wording (27 CFR 16.21)";
