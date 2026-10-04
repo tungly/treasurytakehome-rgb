@@ -23,10 +23,7 @@ public class LabelReader(ChatClient chat)
         - warningBodyBold: true if the rest of the warning is in bold type, false if not, null if you cannot tell.
         """;
 
-    static readonly ChatCompletionOptions Options = new()
-    {
-        Temperature = 0,
-        ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat("label", BinaryData.FromString("""
+    static readonly ChatResponseFormat Format = ChatResponseFormat.CreateJsonSchemaFormat("label", BinaryData.FromString("""
             {
               "type": "object",
               "additionalProperties": false,
@@ -44,8 +41,7 @@ public class LabelReader(ChatClient chat)
                 "warningBodyBold": { "type": ["boolean", "null"] }
               }
             }
-            """), jsonSchemaIsStrict: true),
-    };
+            """), jsonSchemaIsStrict: true);
 
     public async Task<ExtractedLabel> ReadAsync(byte[] image, string mediaType, CancellationToken ct = default)
     {
@@ -54,7 +50,9 @@ public class LabelReader(ChatClient chat)
             new SystemChatMessage(Instructions),
             new UserChatMessage(ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(image), mediaType, ChatImageDetailLevel.High)),
         ];
-        ChatCompletion completion = await chat.CompleteChatAsync(messages, Options, ct);
+        // New options every call: the SDK writes each request's messages onto this object, so sharing it mixes up labels.
+        var options = new ChatCompletionOptions { Temperature = 0, ResponseFormat = Format };
+        ChatCompletion completion = await chat.CompleteChatAsync(messages, options, ct);
         return JsonSerializer.Deserialize<ExtractedLabel>(completion.Content[0].Text, JsonSerializerOptions.Web)
             ?? throw new InvalidOperationException("The model returned an empty answer.");
     }
