@@ -48,6 +48,12 @@
     <h2>1. Label images</h2>
     <label for="LabelImages">Photos of the label <small>(front, back, and neck if they are separate; up to @LabelChecker.MaxImages images, JPG or PNG)</small></label>
     <input type="file" id="LabelImages" name="LabelImages" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
+    <p class="meta">For best results, photograph each label close up. Small print reads much better when the photo shows mostly the label.</p>
+    <div id="photo-editor" hidden>
+        <p><strong>Optional:</strong> if the text on a photo is sideways, press <strong>Turn left</strong> or <strong>Turn right</strong> until it reads normally.
+            To help the reader with small print, drag on the photo to draw a box around the label.</p>
+        <div class="photo-cards" id="photo-cards"></div>
+    </div>
 
     <h2 style="margin-top:28px">2. What the application says</h2>
     <div class="grid">
@@ -65,14 +71,102 @@
 @section Scripts {
     <script>
         const form = document.getElementById('check-form');
+        const input = document.getElementById('LabelImages');
+        let photos = [];
+
+        input.addEventListener('change', async () => {
+            photos.forEach(p => p.bitmap?.close());
+            photos = [];
+            const cards = document.getElementById('photo-cards');
+            cards.replaceChildren();
+            for (const [i, file] of [...input.files].entries()) {
+                const photo = { file, turns: 0, crop: null, bitmap: await createImageBitmap(file).catch(() => null) };
+                photos.push(photo);
+                if (photo.bitmap) cards.append(photoCard(photo, i + 1, input.files.length));
+            }
+            document.getElementById('photo-editor').hidden = cards.children.length === 0;
+        });
+
+        function photoCard(photo, number, count) {
+            const canvas = document.createElement('canvas');
+            canvas.setAttribute('aria-label', `Photo ${number} of ${count}. Drag to draw a box around the label.`);
+            const button = (text, action) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'secondary';
+                b.textContent = text;
+                b.addEventListener('click', () => { action(); draw(photo, canvas); });
+                return b;
+            };
+            const tools = document.createElement('div');
+            tools.className = 'photo-tools';
+            tools.append(
+                button('Turn left', () => { photo.turns = (photo.turns + 3) % 4; photo.crop = null; }),
+                button('Turn right', () => { photo.turns = (photo.turns + 1) % 4; photo.crop = null; }),
+                button('Clear box', () => { photo.crop = null; }));
+            const caption = document.createElement('figcaption');
+            caption.textContent = photo.file.name;
+            const card = document.createElement('figure');
+            card.className = 'photo-card';
+            card.append(canvas, tools, caption);
+            dragToCrop(photo, canvas);
+            draw(photo, canvas);
+            return card;
+        }
+
+        // Shows the photo turned as chosen, with everything outside the crop box dimmed.
+        function draw(photo, canvas) {
+            const b = photo.bitmap, sideways = photo.turns % 2 === 1;
+            const width = sideways ? b.height : b.width, height = sideways ? b.width : b.height;
+            const scale = Math.min(420 / width, 420 / height);
+            canvas.width = Math.round(width * scale);
+            canvas.height = Math.round(height * scale);
+            const c = canvas.getContext('2d');
+            c.save();
+            c.translate(canvas.width / 2, canvas.height / 2);
+            c.rotate(photo.turns * Math.PI / 2);
+            c.drawImage(b, -b.width * scale / 2, -b.height * scale / 2, b.width * scale, b.height * scale);
+            c.restore();
+            if (!photo.crop) return;
+            const { x, y, w, h } = photo.crop, W = canvas.width, H = canvas.height;
+            c.fillStyle = 'rgba(0, 0, 0, 0.55)';
+            c.fillRect(0, 0, W, y * H);
+            c.fillRect(0, (y + h) * H, W, (1 - y - h) * H);
+            c.fillRect(0, y * H, x * W, h * H);
+            c.fillRect((x + w) * W, y * H, (1 - x - w) * W, h * H);
+            c.strokeStyle = '#1d4ed8';
+            c.lineWidth = 3;
+            c.strokeRect(x * W, y * H, w * W, h * H);
+        }
+
+        function dragToCrop(photo, canvas) {
+            let start = null;
+            const point = e => {
+                const r = canvas.getBoundingClientRect();
+                return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+            };
+            canvas.addEventListener('pointerdown', e => { start = point(e); canvas.setPointerCapture(e.pointerId); });
+            canvas.addEventListener('pointermove', e => {
+                if (!start) return;
+                const p = point(e);
+                photo.crop = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
+                draw(photo, canvas);
+            });
+            canvas.addEventListener('pointerup', () => {
+                start = null;
+                if (photo.crop && (photo.crop.w < 0.05 || photo.crop.h < 0.05)) photo.crop = null;
+                draw(photo, canvas);
+            });
+        }
+
         form.addEventListener('submit', async event => {
             event.preventDefault();
             const button = document.getElementById('check-button');
             button.disabled = true;
             button.textContent = 'Checking…';
-            const input = document.getElementById('LabelImages');
             const files = new DataTransfer();
-            for (const file of input.files) files.items.add(await shrinkImage(file));
+            const chosen = photos.length ? photos : [...input.files].map(file => ({ file, turns: 0, crop: null }));
+            for (const photo of chosen) files.items.add(await prepareImage(photo.file, photo.turns, photo.crop));
             input.files = files.files;
             try { sessionStorage.setItem('checkStarted', Date.now()); } catch { }
             form.submit();

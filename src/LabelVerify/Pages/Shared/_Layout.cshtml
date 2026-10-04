@@ -45,7 +45,12 @@
         .Pending { background: #eceff3; color: var(--muted); }
         .note { display: block; font-size: 16px; color: var(--muted); }
         .meta { font-size: 16px; color: var(--muted); }
-        .previews { display: flex; flex-wrap: wrap; gap: 12px; }
+        .previews, .photo-cards { display: flex; flex-wrap: wrap; gap: 12px; }
+        .photo-card { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fafafa; max-width: 100%; }
+        .photo-card canvas { display: block; max-width: 100%; border-radius: 6px; cursor: crosshair; touch-action: none; }
+        .photo-card figcaption { font-size: 16px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+        .photo-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .photo-tools button { margin-top: 0; font-size: 17px; padding: 8px 14px; }
         .preview { max-width: min(100%, 440px); max-height: 420px; border: 1px solid var(--line); border-radius: 8px; }
         @@media (max-width: 640px) {
             .grid { grid-template-columns: 1fr; }
@@ -67,24 +72,46 @@
     @RenderBody()
 </main>
 <script>
-    // Phone photos can be several MB. Vision models scale images to fit 2048 px anyway, so shrink before upload.
-    async function shrinkImage(file) {
-        const maxSide = 2048;
+    /**
+     * Prepares one photo for upload: turns it by quarter turns clockwise, keeps only the crop box if there is one,
+     * and shrinks it to 2048 px on the long side. Vision models scale images to fit 2048 px anyway.
+     * crop is { x, y, w, h } as fractions (0 to 1) of the turned photo. Returns the original file if nothing changes.
+     */
+    async function prepareImage(file, turns, crop) {
         try {
             const bitmap = await createImageBitmap(file);
-            const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-            if (scale === 1 && file.size < 1500000) return file;
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.round(bitmap.width * scale);
-            canvas.height = Math.round(bitmap.height * scale);
-            canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            const sideways = turns % 2 === 1;
+            const width = sideways ? bitmap.height : bitmap.width;
+            const height = sideways ? bitmap.width : bitmap.height;
+            const area = crop
+                ? { x: crop.x * width, y: crop.y * height, w: crop.w * width, h: crop.h * height }
+                : { x: 0, y: 0, w: width, h: height };
+            const scale = Math.min(1, 2048 / Math.max(area.w, area.h));
+            if (!turns && !crop && scale === 1 && file.size < 1500000) return file;
+
+            const turned = document.createElement('canvas');
+            turned.width = width;
+            turned.height = height;
+            const t = turned.getContext('2d');
+            t.translate(width / 2, height / 2);
+            t.rotate(turns * Math.PI / 2);
+            t.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
             bitmap.close();
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-            return blob && blob.size < file.size ? new File([blob], file.name, { type: 'image/jpeg' }) : file;
+
+            const out = document.createElement('canvas');
+            out.width = Math.round(area.w * scale);
+            out.height = Math.round(area.h * scale);
+            out.getContext('2d').drawImage(turned, area.x, area.y, area.w, area.h, 0, 0, out.width, out.height);
+            const blob = await new Promise(resolve => out.toBlob(resolve, 'image/jpeg', 0.9));
+            if (!blob || (!turns && !crop && blob.size >= file.size)) return file;
+            return new File([blob], file.name, { type: 'image/jpeg' });
         } catch {
             return file;
         }
     }
+
+    /** Shrink only, for pages without turn and crop controls. Takes exactly one argument so it is safe to pass to map(). */
+    const shrinkImage = file => prepareImage(file, 0, null);
 </script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
