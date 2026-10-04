@@ -163,6 +163,23 @@ public class LabelCheckTests
     }
 
     [Fact]
+    public void Fields_the_reader_could_not_read_go_to_review_whatever_they_matched()
+    {
+        var app = new Application("OLD TOM DISTILLERY", "Bourbon", "45%", "750 mL", "Old Tom Distillery, Louisville, KY", "Scotland");
+        var label = new ExtractedLabel("OLD TOM DISTILLERY", "Bourbon", "40%", "750 mL", "Old Tom Distillery, Louisville, KY", "Scotland",
+            LabelCheck.GovernmentWarning, true, false, true, false, ["brandName", "alcoholContent", "countryOfOrigin"]);
+
+        var results = LabelCheck.Compare(app, label).ToDictionary(r => r.Field);
+
+        Assert.Equal(Verdict.NeedsReview, results["Brand name"].Verdict);          // would have matched
+        Assert.Equal(Verdict.NeedsReview, results["Alcohol content"].Verdict);     // would have been a mismatch
+        Assert.Contains("hard to read", results["Alcohol content"].Note);
+        Assert.Contains("label says 40%", results["Alcohol content"].Note);
+        Assert.Equal(Verdict.NeedsReview, results["Country of origin"].Verdict);
+        Assert.Equal(Verdict.Match, results["Net contents"].Verdict);              // not listed, unchanged
+    }
+
+    [Fact]
     public void Domestic_product_skips_country_of_origin()
     {
         var app = new Application("OLD TOM DISTILLERY", "Kentucky Straight Bourbon Whiskey", "45%", "750 mL",

@@ -35,6 +35,10 @@ public class LabelReader(ChatClient chat)
         - warningBodyBold: true if the rest of the warning is in bold type, false if not, null if you cannot tell.
         - warningFullyReadable: true if every word of the warning is clearly readable in this image. false if glare, blur,
           shadow, damage, or cropping hides or blurs any part of it, even if you could guess the missing words. null if there is no warning.
+        - unreadableFields: list each of brandName, classType, alcoholContent, netContents, bottler, and countryOfOrigin
+          that appears on the label but that you could not read with certainty, because glare, blur, shadow, angle,
+          small print, or cropping hides or blurs part of it. If you filled in any part from memory or guesswork, list it.
+          Use an empty list if you read every one of them clearly.
         - warningTooSmall: compare the height of the warning's letters with the smallest other text on the label
           (often the bottler or address line). true if the warning letters are clearly smaller than that text,
           or the warning is crammed, faint, or hard to find. false if they are about the same size or larger. null if you cannot tell.
@@ -46,7 +50,7 @@ public class LabelReader(ChatClient chat)
               "additionalProperties": false,
               "required": ["brandName", "classType", "alcoholContent", "netContents", "bottler",
                            "countryOfOrigin", "governmentWarning", "warningHeaderBold", "warningBodyBold",
-                           "warningFullyReadable", "warningTooSmall"],
+                           "warningFullyReadable", "warningTooSmall", "unreadableFields"],
               "properties": {
                 "brandName": { "type": ["string", "null"] },
                 "classType": { "type": ["string", "null"] },
@@ -58,7 +62,9 @@ public class LabelReader(ChatClient chat)
                 "warningHeaderBold": { "type": ["boolean", "null"] },
                 "warningBodyBold": { "type": ["boolean", "null"] },
                 "warningFullyReadable": { "type": ["boolean", "null"] },
-                "warningTooSmall": { "type": ["boolean", "null"] }
+                "warningTooSmall": { "type": ["boolean", "null"] },
+                "unreadableFields": { "type": "array", "items": { "type": "string",
+                  "enum": ["brandName", "classType", "alcoholContent", "netContents", "bottler", "countryOfOrigin"] } }
               }
             }
             """), jsonSchemaIsStrict: true);

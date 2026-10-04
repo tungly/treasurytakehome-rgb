@@ -25,6 +25,7 @@ public record Application(
 /// <param name="WarningBodyBold">Whether the rest of the warning looks bold. Null means the reader could not tell.</param>
 /// <param name="WarningFullyReadable">False when glare, blur or cropping hides part of the warning. Null means no warning.</param>
 /// <param name="WarningTooSmall">Whether the warning looks tiny or hard to find next to the other text. Null means the reader could not tell.</param>
+/// <param name="UnreadableFields">Fields the reader could not read with certainty, by their JSON names, such as "bottler".</param>
 public record ExtractedLabel(
     string? BrandName,
     string? ClassType,
@@ -36,7 +37,8 @@ public record ExtractedLabel(
     bool? WarningHeaderBold,
     bool? WarningBodyBold,
     bool? WarningFullyReadable,
-    bool? WarningTooSmall);
+    bool? WarningTooSmall,
+    IReadOnlyList<string>? UnreadableFields = null);
 
 /// <summary>Compares a label against its application, one field at a time.</summary>
 public static partial class LabelCheck
@@ -64,16 +66,21 @@ public static partial class LabelCheck
 
     public static List<FieldResult> Compare(Application app, ExtractedLabel label)
     {
+        var unsure = new HashSet<string>(label.UnreadableFields ?? [], StringComparer.OrdinalIgnoreCase);
+        FieldResult Check(string key, FieldResult result) => unsure.Contains(key)
+            ? HardToRead(result, "This is hard to read in the photo, so it may be misread or guessed. Check by eye.")
+            : result;
+
         var results = new List<FieldResult>
         {
-            CompareText("Brand name", app.BrandName, label.BrandName),
-            CompareText("Class / type", app.ClassType, label.ClassType),
-            CompareAlcohol(app.AlcoholContent, label.AlcoholContent),
-            CompareNetContents(app.NetContents, label.NetContents),
-            CompareBottler(app.Bottler, label.Bottler),
+            Check("brandName", CompareText("Brand name", app.BrandName, label.BrandName)),
+            Check("classType", CompareText("Class / type", app.ClassType, label.ClassType)),
+            Check("alcoholContent", CompareAlcohol(app.AlcoholContent, label.AlcoholContent)),
+            Check("netContents", CompareNetContents(app.NetContents, label.NetContents)),
+            Check("bottler", CompareBottler(app.Bottler, label.Bottler)),
         };
         if (!string.IsNullOrWhiteSpace(app.CountryOfOrigin) || !string.IsNullOrWhiteSpace(label.CountryOfOrigin))
-            results.Add(CompareText("Country of origin", app.CountryOfOrigin, label.CountryOfOrigin));
+            results.Add(Check("countryOfOrigin", CompareText("Country of origin", app.CountryOfOrigin, label.CountryOfOrigin)));
         results.Add(CheckWarningText(label.GovernmentWarning, label.WarningFullyReadable));
         if (string.IsNullOrWhiteSpace(label.GovernmentWarning))
             return results;
@@ -170,9 +177,15 @@ public static partial class LabelCheck
         var result = CheckWarningWording(found);
         if (fullyReadable != false)
             return result;
-        string note = "Part of the warning is hard to read in this photo, so the wording may be guessed. Check by eye.";
-        return result with { Verdict = Verdict.NeedsReview, Note = result.Note.Length > 0 ? $"{note} {result.Note}" : note };
+        return HardToRead(result, "Part of the warning is hard to read in this photo, so the wording may be guessed. Check by eye.");
     }
+
+    /// <summary>
+    /// Sends a result to a person when the reader was unsure of the text, whatever the comparison said,
+    /// because a guessed reading can match or mismatch by chance. Keeps the original note after the new one.
+    /// </summary>
+    static FieldResult HardToRead(FieldResult result, string note) =>
+        result with { Verdict = Verdict.NeedsReview, Note = result.Note.Length > 0 ? $"{note} {result.Note}" : note };
 
     /// <summary>Flags a warning that looks tiny or hard to find. A photo has no scale, so this is a judgment, not a measurement.</summary>
     public static FieldResult CheckWarningSize(bool? tooSmall)
