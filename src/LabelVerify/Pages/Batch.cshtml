@@ -18,7 +18,7 @@
 </style>
 
 <h1>Check a batch</h1>
-<p class="lead">Upload many label images and one CSV file that lists what each application says. Keep this page open until the batch is done. A batch of 300 labels takes about 5 minutes.</p>
+<p class="lead">Upload many label images and one CSV file that lists what each application says. Keep this page open until the batch is done. A batch of 300 labels takes about 4 minutes.</p>
 
 <form class="card" id="batch-form">
     @Html.AntiForgeryToken()
@@ -51,7 +51,7 @@
 @section Scripts {
 <script>
     const token = document.querySelector('input[name=__RequestVerificationToken]').value;
-    // ponytail: fixed pacing for one 100-requests-per-minute deployment (about 2 s per label); make it a setting if quota grows.
+    // ponytail: fixed pacing (about 90 labels a minute) that fits a 200-requests, 200K-tokens-per-minute deployment; make it a setting if quota changes.
     const WORKERS = 3;
     const WORDS = { Match: 'Match', NeedsReview: 'Needs review', Mismatch: 'Mismatch', Failed: 'Could not check', Pending: 'Waiting' };
     const $ = id => document.getElementById(id);
@@ -114,7 +114,7 @@
     }
 
     async function check(job) {
-        const images = await Promise.all(job.images.map(shrinkImage));
+        const images = await Promise.all(job.images.map(file => shrinkImage(file)));
         for (let attempt = 1; ; attempt++) {
             let data;
             try {
