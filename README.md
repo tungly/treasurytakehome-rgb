@@ -72,6 +72,15 @@ Run the tests (no Azure access needed):
 dotnet test
 ```
 
+Run every sample through a running app and compare each result with the expected one (needs Python 3 and curl; each label is one Azure OpenAI call). It exits with status 1 if any result differs. Samples marked `judgment` depend on the model's judgment of bold, readability or type size and can occasionally flip:
+
+```bash
+python3 scripts/smoke_test.py                                            # app started with dotnet run
+python3 scripts/smoke_test.py https://labelverify-16883.azurewebsites.net
+```
+
+The unit tests cover the comparison rules and the CSV reader. The smoke test covers the whole path through the single-label page and Azure OpenAI. Neither covers the batch page's browser code, which was tested by hand.
+
 Recreate the sample images (needs Python with Pillow and macOS Arial fonts):
 
 ```bash
@@ -169,6 +178,7 @@ src/LabelVerify/
   BatchCsv.cs         Reads the batch CSV
   Pages/              Single-label page, batch page, shared layout
 tests/LabelVerify.Tests/   Unit tests for the rules and the CSV reader
+scripts/smoke_test.py      Runs all samples against a running app and checks the expected results
 samples/                   Test labels, simulated photos, sample CSV, and the scripts that draw them
 docs/assignment.md         The original assignment brief
 ```
