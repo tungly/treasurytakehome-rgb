@@ -1,0 +1,61 @@
+using System.Text.Json;
+using OpenAI.Chat;
+
+namespace LabelVerify;
+
+/// <summary>Reads the label fields out of a label image with one Azure OpenAI vision call.</summary>
+public class LabelReader(ChatClient chat)
+{
+    const string Instructions = """
+        You read alcohol beverage label images for US TTB compliance review.
+        Copy each field exactly as printed on the label. Do not fix typos, spelling, capital letters, or punctuation.
+        Use null for any field that is not on the label or that you cannot read.
+
+        - brandName: the brand name.
+        - classType: the class or type designation, such as "Kentucky Straight Bourbon Whiskey".
+        - alcoholContent: the alcohol statement as printed, such as "45% Alc./Vol. (90 Proof)".
+        - netContents: the net contents as printed, such as "750 mL".
+        - bottler: the bottler, producer, or importer name and address. Leave out lead-in words like "Bottled by".
+        - countryOfOrigin: the country name only, only if the label states one. Leave out words like "Product of".
+        - governmentWarning: the whole warning statement, word for word, keeping its exact capital letters.
+          Start with its opening words exactly as printed (for example "GOVERNMENT WARNING:") and include everything after them.
+        - warningHeaderBold: true if the words "GOVERNMENT WARNING" are in bold type, false if not, null if you cannot tell.
+        - warningBodyBold: true if the rest of the warning is in bold type, false if not, null if you cannot tell.
+        """;
+
+    static readonly ChatCompletionOptions Options = new()
+    {
+        Temperature = 0,
+        ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat("label", BinaryData.FromString("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["brandName", "classType", "alcoholContent", "netContents", "bottler",
+                           "countryOfOrigin", "governmentWarning", "warningHeaderBold", "warningBodyBold"],
+              "properties": {
+                "brandName": { "type": ["string", "null"] },
+                "classType": { "type": ["string", "null"] },
+                "alcoholContent": { "type": ["string", "null"] },
+                "netContents": { "type": ["string", "null"] },
+                "bottler": { "type": ["string", "null"] },
+                "countryOfOrigin": { "type": ["string", "null"] },
+                "governmentWarning": { "type": ["string", "null"] },
+                "warningHeaderBold": { "type": ["boolean", "null"] },
+                "warningBodyBold": { "type": ["boolean", "null"] }
+              }
+            }
+            """), jsonSchemaIsStrict: true),
+    };
+
+    public async Task<ExtractedLabel> ReadAsync(byte[] image, string mediaType, CancellationToken ct = default)
+    {
+        ChatMessage[] messages =
+        [
+            new SystemChatMessage(Instructions),
+            new UserChatMessage(ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(image), mediaType, ChatImageDetailLevel.High)),
+        ];
+        ChatCompletion completion = await chat.CompleteChatAsync(messages, Options, ct);
+        return JsonSerializer.Deserialize<ExtractedLabel>(completion.Content[0].Text, JsonSerializerOptions.Web)
+            ?? throw new InvalidOperationException("The model returned an empty answer.");
+    }
+}

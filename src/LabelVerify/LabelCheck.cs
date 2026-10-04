@@ -120,15 +120,16 @@ public static partial class LabelCheck
     public static FieldResult CheckWarningText(string? found)
     {
         const string field = "Government warning wording";
+        const string required = "Required wording (27 CFR 16.21)";
         if (string.IsNullOrWhiteSpace(found))
-            return new(field, Verdict.Mismatch, GovernmentWarning, found, "Warning statement not found on the label.");
+            return new(field, Verdict.Mismatch, required, found, "Warning statement not found on the label.");
 
         string got = Spaces().Replace(found.Trim(), " ");
         if (got == GovernmentWarning)
-            return new(field, Verdict.Match, GovernmentWarning, found);
+            return new(field, Verdict.Match, required, "Same as required wording");
         if (string.Equals(got, GovernmentWarning, StringComparison.OrdinalIgnoreCase))
-            return new(field, Verdict.Mismatch, GovernmentWarning, found, "Capital letters differ from the required text.");
-        return new(field, Verdict.Mismatch, GovernmentWarning, found, FirstDifference(GovernmentWarning, got));
+            return new(field, Verdict.Mismatch, required, found, "Capital letters differ from the required text.");
+        return new(field, Verdict.Mismatch, required, found, FirstDifference(GovernmentWarning, got));
     }
 
     /// <summary>
