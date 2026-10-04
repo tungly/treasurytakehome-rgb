@@ -46,8 +46,25 @@ public class LabelCheckTests
     {
         var result = LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.Replace("GOVERNMENT WARNING:", "Government Warning:"));
         Assert.Equal(Verdict.Mismatch, result.Verdict);
-        Assert.Contains("Capital", result.Note);
+        Assert.Contains("must be in capital letters", result.Note);
     }
+
+    [Fact]
+    public void Warning_with_the_rest_in_capitals_and_line_break_hyphens_matches()
+    {
+        string allCaps = LabelCheck.GovernmentWarning.ToUpperInvariant().Replace("PREGNANCY", "PREG-\nNANCY");
+        var result = LabelCheck.CheckWarningText(allCaps);
+        Assert.Equal(Verdict.Match, result.Verdict);
+        Assert.Contains("all in capitals", result.Note);
+    }
+
+    [Fact]
+    public void Line_break_hyphen_in_normal_text_matches() =>
+        Assert.Equal(Verdict.Match, LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.Replace("pregnancy", "preg- nancy")).Verdict);
+
+    [Fact]
+    public void Other_capital_letter_differences_after_the_header_go_to_review() =>
+        Assert.Equal(Verdict.NeedsReview, LabelCheck.CheckWarningText(LabelCheck.GovernmentWarning.Replace("Surgeon General", "surgeon general")).Verdict);
 
     [Fact]
     public void Warning_with_changed_wording_names_the_first_difference()

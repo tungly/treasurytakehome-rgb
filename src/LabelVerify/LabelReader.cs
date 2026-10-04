@@ -21,7 +21,8 @@ public class LabelReader(ChatClient chat)
         - classType: the class or type designation, such as "Kentucky Straight Bourbon Whiskey".
         - alcoholContent: the alcohol statement as printed, such as "45% Alc./Vol. (90 Proof)".
         - netContents: the net contents as printed, such as "750 mL".
-        - bottler: the bottler, producer, or importer name and address. Leave out lead-in words like "Bottled by".
+        - bottler: the bottler, producer, or importer name and address. For an imported product, give the importer
+          (the "Imported by" line) instead of the foreign producer. Leave out lead-in words like "Bottled by" or "Imported by".
         - countryOfOrigin: the country name only, only if the label states one. Leave out words like "Product of".
         - governmentWarning: the whole warning statement, word for word, keeping its exact capital letters.
           Start with its opening words exactly as printed (for example "GOVERNMENT WARNING:") and include everything after them.

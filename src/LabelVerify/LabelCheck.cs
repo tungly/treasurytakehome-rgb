@@ -142,7 +142,8 @@ public static partial class LabelCheck
     }
 
     /// <summary>
-    /// The wording must be exact, capitals included. Only line breaks and extra spaces are forgiven.
+    /// The words must be exact and "GOVERNMENT WARNING:" must be in capitals. Line breaks, extra spaces and
+    /// line-break hyphens are forgiven, and so is a rest-of-warning printed all in capitals.
     /// If part of the warning is hard to read in the photo, any result goes to a person, because the reader may have guessed words.
     /// </summary>
     public static FieldResult CheckWarningText(string? found, bool? fullyReadable = true)
@@ -175,12 +176,23 @@ public static partial class LabelCheck
         if (string.IsNullOrWhiteSpace(found))
             return new(field, Verdict.Mismatch, required, found, "Warning statement not found on the label.");
 
-        string got = Spaces().Replace(found.Trim(), " ");
+        // The required text has no hyphens, so a hyphen inside a word is line-break hyphenation, such as "PREG-NANCY".
+        string got = Spaces().Replace(WordHyphen().Replace(found.Trim(), ""), " ");
         if (got == GovernmentWarning)
             return new(field, Verdict.Match, required, "Same as required wording");
-        if (string.Equals(got, GovernmentWarning, StringComparison.OrdinalIgnoreCase))
-            return new(field, Verdict.Mismatch, required, found, "Capital letters differ from the required text.");
-        return new(field, Verdict.Mismatch, required, found, FirstDifference(GovernmentWarning, got));
+        if (!string.Equals(got, GovernmentWarning, StringComparison.OrdinalIgnoreCase))
+            return new(field, Verdict.Mismatch, required, found, FirstDifference(GovernmentWarning, got));
+
+        // Same words, different capital letters. 27 CFR 16.22 sets capitals only for "GOVERNMENT WARNING".
+        const string header = "GOVERNMENT WARNING:";
+        if (!got.StartsWith(header, StringComparison.Ordinal))
+            return new(field, Verdict.Mismatch, required, found, "\"GOVERNMENT WARNING:\" must be in capital letters (27 CFR 16.22).");
+        string rest = got[header.Length..];
+        if (rest == rest.ToUpperInvariant())
+            return new(field, Verdict.Match, required, "Same wording, rest in capital letters",
+                "The rest of the warning is all in capitals, which the regulation allows.");
+        return new(field, Verdict.NeedsReview, required, found,
+            "Same words, but some capital letters after \"GOVERNMENT WARNING:\" differ from the required text. Check by eye.");
     }
 
     /// <summary>
@@ -257,6 +269,9 @@ public static partial class LabelCheck
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();
+
+    [GeneratedRegex(@"(?<=[A-Za-z])-\s*(?=[A-Za-z])")]
+    private static partial Regex WordHyphen();
 
     [GeneratedRegex(@"[^A-Z0-9]+")]
     private static partial Regex NonAlphanumeric();
