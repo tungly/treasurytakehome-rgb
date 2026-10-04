@@ -22,7 +22,7 @@ The government warning is always checked against the required wording, so there 
 1. Open **Check a batch**.
 2. Choose all the label images at once.
 3. Choose a CSV file with one row per label. Use **Download a CSV template** on the page, or see [samples/applications.csv](samples/applications.csv).
-4. Press **Check all labels**. Keep the page open until the batch is done: results live only in the page, and a 300-label batch takes about 5 minutes. Results fill in as each label finishes. Use **Show only labels that need attention** to hide the labels that match, and **Download results (CSV)** to save them.
+4. Press **Check all labels**. Keep the page open until the batch is done: results live only in the page, and a 300-label batch takes about 4 minutes. Results fill in as each label finishes. Use **Show only labels that need attention** to hide the labels that match, and **Download results (CSV)** to save them.
 
 CSV columns: `file`, `brand_name`, `class_type`, `alcohol_content`, `net_contents`, `bottler`, `country_of_origin`. The `file` column lists the label's image file names. Separate several images of one label with `|`, for example `front.jpg|back.jpg`. Leave `country_of_origin` blank for domestic products.
 
@@ -83,7 +83,7 @@ python3 samples/make_labels.py && python3 samples/make_photos.py
 ```bash
 az group create --name label-verify --location eastus2
 az cognitiveservices account create --name <resource-name> --resource-group label-verify --location eastus2 --kind OpenAI --sku S0 --custom-domain <resource-name> --yes
-az cognitiveservices account deployment create --name <resource-name> --resource-group label-verify --deployment-name label-reader --model-name gpt-4.1-mini --model-version 2025-04-14 --model-format OpenAI --sku-name GlobalStandard --sku-capacity 100
+az cognitiveservices account deployment create --name <resource-name> --resource-group label-verify --deployment-name label-reader --model-name gpt-4.1-mini --model-version 2025-04-14 --model-format OpenAI --sku-name GlobalStandard --sku-capacity 200
 ```
 
 If `account create` fails with `MissingSubscriptionRegistration`, run `az provider register --namespace Microsoft.CognitiveServices --wait` first.
@@ -94,6 +94,7 @@ If `account create` fails with `MissingSubscriptionRegistration`, run `az provid
 az provider register --namespace Microsoft.Web --wait
 az appservice plan create --name label-verify-plan --resource-group label-verify --location centralus --is-linux --sku B1
 az webapp create --name <app-name> --resource-group label-verify --plan label-verify-plan --runtime "DOTNETCORE:10.0" --https-only true
+az webapp config set --name <app-name> --resource-group label-verify --always-on true
 az webapp config appsettings set --name <app-name> --resource-group label-verify --output none --settings \
   AzureOpenAI__Endpoint="https://<resource-name>.openai.azure.com/" AzureOpenAI__Deployment=label-reader \
   AzureOpenAI__Key="$(az cognitiveservices account keys list --name <resource-name> --resource-group label-verify --query key1 -o tsv)"
@@ -101,7 +102,7 @@ dotnet publish src/LabelVerify -c Release -o ./publish && (cd publish && zip -qr
 az webapp deploy --name <app-name> --resource-group label-verify --src-path app.zip --type zip
 ```
 
-App Service reads the settings as environment variables. The double underscore (`__`) stands for the `:` in the setting names.
+Always On keeps the app loaded, so the first check after a quiet period is not slowed by a restart. App Service reads the settings as environment variables. The double underscore (`__`) stands for the `:` in the setting names.
 
 The plan is in Central US because the free-trial subscription had no B1 quota in East US or East US 2. If `plan create` fails with "Operation cannot be completed without additional quota", try another region. The app and the Azure OpenAI resource do not need to be in the same region.
 
@@ -148,10 +149,11 @@ The server reads the CSV ([BatchCsv.cs](src/LabelVerify/BatchCsv.cs)). The brows
 
 - **Bold detection is a hint, not a ruling.** On 10 identical copies of a label whose whole warning is bold, the model called the body "not bold" once, so 1 in 10 showed **Match** instead of **Needs review**. Real photos will likely do worse. Agents should confirm bold type by eye.
 - **Hard-to-read warnings.** Before the readability check was added, a photo with glare over the warning came back as an exact match, so the model can fill in text it cannot fully see. With the check, that photo goes to **Needs review** (2 of 2 runs). The model still decides for itself whether the warning is readable, so agents should look at the warning on any poor photo.
-- **Warning type size is a judgment, not a measurement.** The tiny-warning sample was flagged in 5 of 5 runs, and the normal labels in 0 of 9. The legal minimum sizes in 27 CFR 16.22 (for example 2 mm for containers over 237 mL) cannot be checked from a photo without knowing its scale.
+- **Warning type size is a judgment, not a measurement.** Across all runs, the tiny-warning sample was flagged 14 of 16 times; the 2 misses showed **Match**, a wrong pass. Normal labels were not flagged. The legal minimum sizes in 27 CFR 16.22 (for example 2 mm for containers over 237 mL) cannot be checked from a photo without knowing its scale.
 - **Test images are mostly synthetic.** The samples are drawn labels and simulated photos (tilt, glare, dim light, blur). One real bottle photo was tried; it was read correctly but took longer.
-- **Several images per label.** Front and back were combined correctly 6 of 7 times at first. The miss left out the bottler, which showed as **Needs review**, not a wrong pass. After adding a prompt hint that the back label often holds the bottler and warning, it was correct 11 of 11 times.
-- **Batch speed is limited by the Azure OpenAI quota.** The deployment allows 100 requests per minute. Measured: 40 labels in 40 seconds, so a 300-label batch takes about 5 minutes. Several agents running batches at the same time share that quota.
+- **The model can invent text it expects to see.** During a test where a since-fixed bug sent one image as a single pixel, it reported a bottler street address and a country that were on no label, instead of leaving them empty. The rules catch most of this as a mismatch against the application, but agents should treat the "Label says" column as the model's reading, not proof.
+- **Several images per label.** Front and back were combined correctly in all 36 test runs (single-label page, live site, and a 10-label batch). The prompt also tells the model that the bottler and warning are often on the back label.
+- **Batch speed is limited by the Azure OpenAI quota.** Each check uses about 2,000 tokens (about 2,500 for front and back). The deployment allows 200 requests and 200,000 tokens per minute, the most the free-trial quota allows for this model. Measured: 120 labels (10 of them front and back) in 1 minute 24 seconds with no rate-limit errors, so a 300-label batch takes about 3.5 to 4 minutes. Several agents running batches at the same time share that quota. If the limit is hit, a label waits 20 seconds and retries up to 3 times; this path has not been triggered in testing.
 - **Speed.** Reading a label took 1.7 to 2.8 seconds in testing, including a 4032×3024 phone photo. Front and back together took 2.0 to 2.1 seconds. One real bottle photo (front only) took 4.3 seconds to read and 5.2 seconds in total, over the target, so real photos may be slower than the samples. The total wait seen in the browser was 2.7 to 4.0 seconds, under the 5-second target. A slow network or the first request after the app has been idle can add time.
 - **No sign-in.** Anyone with the link can use the prototype. A production version would need sign-in, audit logging and a records retention policy.
 - **File types.** JPG, PNG, WebP and GIF only. iPhone HEIC photos must be saved as JPG first.
