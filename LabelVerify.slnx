@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LabelVerify/LabelVerify.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LabelVerify.Tests/LabelVerify.Tests.csproj" />
+  </Folder>
+</Solution>
