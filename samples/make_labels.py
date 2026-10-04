@@ -76,7 +76,27 @@ def draw_label(name: str, spec: dict) -> None:
     img.save(OUT / f"{name}.png")
 
 
+def draw_front_back(name: str, spec: dict) -> None:
+    """Splits one label across a front panel and a back panel, like most real bottles."""
+    width, height = 800, 650
+    for side in ("front", "back"):
+        img = Image.new("RGB", (width, height), "#f7f0e1")
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([20, 20, width - 20, height - 20], outline="#2b1d0e", width=4)
+        if side == "front":
+            y = centered(draw, 90, spec["brand"], font(True, 56), width)
+            y = centered(draw, y + 20, spec["kind"], font(False, 34), width)
+            y = centered(draw, y + 60, spec["abv"], font(True, 30), width)
+            centered(draw, y, spec["net"], font(False, 30), width)
+        else:
+            centered(draw, 90, spec["bottler"], font(False, 22), width)
+            warning(draw, 300, spec, 60, width - 60)
+        img.save(OUT / f"{name}-{side}.png")
+        print("wrote", f"{name}-{side}.png")
+
+
 if __name__ == "__main__":
     for label_name, label_spec in LABELS.items():
         draw_label(label_name, label_spec)
         print("wrote", label_name + ".png")
+    draw_front_back("old-tom", LABELS["old-tom-good"])

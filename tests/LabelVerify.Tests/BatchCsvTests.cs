@@ -20,7 +20,7 @@ public class BatchCsvTests
         var (rows, errors) = Parse($"{Header}\nold-tom.png,OLD TOM,Bourbon,45%,750 mL,\"Old Tom Distillery, Louisville, KY\",\n");
         Assert.Empty(errors);
         var row = Assert.Single(rows);
-        Assert.Equal("old-tom.png", row.File);
+        Assert.Equal(["old-tom.png"], row.Files);
         Assert.Equal("Old Tom Distillery, Louisville, KY", row.App.Bottler);
         Assert.Equal("", row.App.CountryOfOrigin);
     }
@@ -30,7 +30,7 @@ public class BatchCsvTests
     {
         var (rows, errors) = Parse("Brand_Name,FILE,class_type,alcohol_content,net_contents,bottler,country_of_origin\nGLEN,glen.png,Scotch,43%,700 mL,Arden,Scotland\n", bom: true);
         Assert.Empty(errors);
-        Assert.Equal("glen.png", Assert.Single(rows).File);
+        Assert.Equal(["glen.png"], Assert.Single(rows).Files);
         Assert.Equal("GLEN", rows[0].App.BrandName);
     }
 
@@ -46,6 +46,23 @@ public class BatchCsvTests
         Assert.Equal(2, errors.Count);
         Assert.Contains("more than once", errors[0]);
         Assert.Contains("blank", errors[1]);
+    }
+
+    [Fact]
+    public void Splits_several_images_for_one_label()
+    {
+        var (rows, errors) = Parse($"{Header}\n\"front.jpg | back.jpg|neck.jpg\",A,,,,,\n");
+        Assert.Empty(errors);
+        Assert.Equal(["front.jpg", "back.jpg", "neck.jpg"], Assert.Single(rows).Files);
+    }
+
+    [Fact]
+    public void Rejects_too_many_images_and_images_shared_between_labels()
+    {
+        var (rows, errors) = Parse($"{Header}\na|b|c|d|e,A,,,,,\nfront.jpg|back.jpg,B,,,,,\nback.jpg,C,,,,,\n");
+        Assert.Single(rows);
+        Assert.Contains("up to 4", errors[0]);
+        Assert.Contains("back.jpg is listed more than once", errors[1]);
     }
 
     [Fact]

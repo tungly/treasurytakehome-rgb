@@ -45,7 +45,8 @@
         .Pending { background: #eceff3; color: var(--muted); }
         .note { display: block; font-size: 16px; color: var(--muted); }
         .meta { font-size: 16px; color: var(--muted); }
-        .preview { max-width: 100%; max-height: 420px; border: 1px solid var(--line); border-radius: 8px; }
+        .previews { display: flex; flex-wrap: wrap; gap: 12px; }
+        .preview { max-width: min(100%, 440px); max-height: 420px; border: 1px solid var(--line); border-radius: 8px; }
         @@media (max-width: 640px) {
             .grid { grid-template-columns: 1fr; }
             table.fields thead { display: none; }

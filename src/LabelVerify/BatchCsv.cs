@@ -2,10 +2,13 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace LabelVerify;
 
-/// <summary>One CSV row: the label image file name and its application fields.</summary>
-public record BatchRow(string File, Application App);
+/// <summary>One CSV row: the image files of one label (such as front and back) and its application fields.</summary>
+public record BatchRow(IReadOnlyList<string> Files, Application App);
 
-/// <summary>Reads the batch CSV. Each row names a label image file and gives its application fields.</summary>
+/// <summary>
+/// Reads the batch CSV. Each row names the image files of one label and gives its application fields.
+/// A label with several images lists them in the file column separated by "|", such as "front.jpg|back.jpg".
+/// </summary>
 public static class BatchCsv
 {
     public static readonly string[] Columns =
@@ -36,13 +39,16 @@ public static class BatchCsv
             if (f is null || f.All(string.IsNullOrWhiteSpace)) continue;
             string Get(string column) => index[column] < f.Length ? f[index[column]] : "";
 
-            string file = Path.GetFileName(Get("file"));
-            if (file.Length == 0)
+            var files = Get("file").Split('|').Select(name => Path.GetFileName(name.Trim())).Where(name => name.Length > 0).ToList();
+            var repeated = files.Where(name => !seen.Add(name)).ToList();
+            if (files.Count == 0)
                 errors.Add($"Line {line}: the file column is blank.");
-            else if (!seen.Add(file))
-                errors.Add($"Line {line}: {file} is listed more than once.");
+            else if (files.Count > LabelChecker.MaxImages)
+                errors.Add($"Line {line}: list up to {LabelChecker.MaxImages} images for one label.");
+            else if (repeated.Count > 0)
+                errors.Add($"Line {line}: {string.Join(", ", repeated)} is listed more than once.");
             else
-                rows.Add(new(file, new Application(Get("brand_name"), Get("class_type"), Get("alcohol_content"),
+                rows.Add(new(files, new Application(Get("brand_name"), Get("class_type"), Get("alcohol_content"),
                     Get("net_contents"), Get("bottler"), Get("country_of_origin"))));
         }
         if (rows.Count == 0 && errors.Count == 0)

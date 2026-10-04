@@ -3,11 +3,17 @@ using OpenAI.Chat;
 
 namespace LabelVerify;
 
-/// <summary>Reads the label fields out of a label image with one Azure OpenAI vision call.</summary>
+/// <summary>One uploaded image, such as the front or back label of a container.</summary>
+public record LabelImage(byte[] Data, string MediaType);
+
+/// <summary>Reads the label fields out of all images of one container with one Azure OpenAI vision call.</summary>
 public class LabelReader(ChatClient chat)
 {
     const string Instructions = """
         You read alcohol beverage label images for US TTB compliance review.
+        All images show the same container, for example its front, back, and neck labels.
+        Treat them as one label and combine what you find across all of them. Read every image fully before answering:
+        the bottler line and the health warning are often on the back label.
         Copy each field exactly as printed on the label. Do not fix typos, spelling, capital letters, or punctuation.
         Use null for any field that is not on the label or that you cannot read.
 
@@ -52,12 +58,13 @@ public class LabelReader(ChatClient chat)
             }
             """), jsonSchemaIsStrict: true);
 
-    public async Task<ExtractedLabel> ReadAsync(byte[] image, string mediaType, CancellationToken ct = default)
+    public async Task<ExtractedLabel> ReadAsync(IReadOnlyList<LabelImage> images, CancellationToken ct = default)
     {
         ChatMessage[] messages =
         [
             new SystemChatMessage(Instructions),
-            new UserChatMessage(ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(image), mediaType, ChatImageDetailLevel.High)),
+            new UserChatMessage(images.Select(i =>
+                ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(i.Data), i.MediaType, ChatImageDetailLevel.High))),
         ];
         // New options every call: the SDK writes each request's messages onto this object, so sharing it mixes up labels.
         var options = new ChatCompletionOptions { Temperature = 0, ResponseFormat = Format };

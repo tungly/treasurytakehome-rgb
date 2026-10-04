@@ -24,6 +24,6 @@ public class BatchModel(LabelChecker checker) : PageModel
         return new JsonResult(new { rows, errors });
     }
 
-    public async Task<IActionResult> OnPostCheckAsync(IFormFile? image, Application app, CancellationToken ct) =>
-        new JsonResult(await checker.CheckAsync(image, app, ct));
+    public async Task<IActionResult> OnPostCheckAsync(List<IFormFile> images, Application app, CancellationToken ct) =>
+        new JsonResult(await checker.CheckAsync(images, app, ct));
 }

@@ -51,6 +51,17 @@ public static partial class LabelCheck
     public static Verdict Overall(IEnumerable<FieldResult> results) =>
         results.Select(r => r.Verdict).DefaultIfEmpty(Verdict.Match).Max();
 
+    /// <summary>One line for the top of the results, such as "Does not match: 1 problem found, 4 items to review".</summary>
+    public static string Summary(IReadOnlyCollection<FieldResult> results)
+    {
+        int problems = results.Count(r => r.Verdict == Verdict.Mismatch);
+        int reviews = results.Count(r => r.Verdict == Verdict.NeedsReview);
+        string toReview = $"{reviews} item{(reviews == 1 ? "" : "s")} to review";
+        if (problems > 0)
+            return $"Does not match: {problems} problem{(problems == 1 ? "" : "s")} found" + (reviews > 0 ? $", {toReview}" : "");
+        return reviews > 0 ? $"Needs your review: {toReview}" : "Everything matches";
+    }
+
     public static List<FieldResult> Compare(Application app, ExtractedLabel label)
     {
         var results = new List<FieldResult>
@@ -64,6 +75,8 @@ public static partial class LabelCheck
         if (!string.IsNullOrWhiteSpace(app.CountryOfOrigin) || !string.IsNullOrWhiteSpace(label.CountryOfOrigin))
             results.Add(CompareText("Country of origin", app.CountryOfOrigin, label.CountryOfOrigin));
         results.Add(CheckWarningText(label.GovernmentWarning, label.WarningFullyReadable));
+        if (string.IsNullOrWhiteSpace(label.GovernmentWarning))
+            return results;
         results.Add(CheckWarningBold(label.WarningHeaderBold, label.WarningBodyBold));
         results.Add(CheckWarningSize(label.WarningTooSmall));
         return results;

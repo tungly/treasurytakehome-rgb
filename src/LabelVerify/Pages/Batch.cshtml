@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Check a batch";
     string template = string.Join(",", BatchCsv.Columns) + "\n" +
-        "old-tom.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45%,750 mL,\"Old Tom Distillery, Louisville, Kentucky\",\n";
+        "old-tom-front.jpg|old-tom-back.jpg,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45%,750 mL,\"Old Tom Distillery, Louisville, Kentucky\",\n";
 }
 <style>
     .rows details { border-bottom: 1px solid var(--line); padding: 10px 0; }
@@ -27,7 +27,7 @@
     <input type="file" id="images" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
 
     <h2 style="margin-top:28px">2. Application data</h2>
-    <label for="csv">CSV file with one row per label <small>(the file column must match each image's file name)</small></label>
+    <label for="csv">CSV file with one row per label <small>(the file column lists that label's image file names; separate front and back with |)</small></label>
     <input type="file" id="csv" accept=".csv,text/csv" required>
     <p class="meta">
         Columns: @string.Join(", ", BatchCsv.Columns). Leave country_of_origin blank for domestic products.
@@ -67,7 +67,7 @@
     async function post(handler, fields) {
         const form = new FormData();
         form.append('__RequestVerificationToken', token);
-        for (const [k, v] of Object.entries(fields)) if (v != null) form.append(k, v);
+        for (const [k, v] of Object.entries(fields)) for (const item of [v].flat()) if (item != null) form.append(k, item);
         const response = await fetch(`?handler=${handler}`, { method: 'POST', body: form });
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
         return response.json();
@@ -114,12 +114,12 @@
     }
 
     async function check(job) {
-        const image = await shrinkImage(job.image);
+        const images = await Promise.all(job.images.map(shrinkImage));
         for (let attempt = 1; ; attempt++) {
             let data;
             try {
                 data = await post('Check', {
-                    image, 'app.BrandName': job.app.brandName, 'app.ClassType': job.app.classType,
+                    images, 'app.BrandName': job.app.brandName, 'app.ClassType': job.app.classType,
                     'app.AlcoholContent': job.app.alcoholContent, 'app.NetContents': job.app.netContents,
                     'app.Bottler': job.app.bottler, 'app.CountryOfOrigin': job.app.countryOfOrigin,
                 });
@@ -163,12 +163,15 @@
             if (parsed.errors.length) return showErrors(parsed.errors);
 
             const images = new Map([...$('images').files].map(f => [f.name.toLowerCase(), f]));
-            jobs = parsed.rows.map(r => ({ file: r.file, app: r.app, image: images.get(r.file.toLowerCase()), status: 'Pending' }));
-            const listed = new Set(jobs.map(j => j.file.toLowerCase()));
+            jobs = parsed.rows.map(r => ({ file: r.files.join(' | '), names: r.files, app: r.app, status: 'Pending' }));
+            const listed = new Set(jobs.flatMap(j => j.names.map(n => n.toLowerCase())));
             for (const name of images.keys())
                 if (!listed.has(name)) jobs.push({ file: images.get(name).name, status: 'Failed', error: 'This image has no row in the CSV.' });
-            for (const j of jobs)
-                if (j.status === 'Pending' && !j.image) Object.assign(j, { status: 'Failed', error: 'This image was not uploaded.' });
+            for (const j of jobs.filter(j => j.status === 'Pending')) {
+                const missing = j.names.filter(n => !images.has(n.toLowerCase()));
+                if (missing.length) Object.assign(j, { status: 'Failed', error: `Not uploaded: ${missing.join(', ')}.` });
+                else j.images = j.names.map(n => images.get(n.toLowerCase()));
+            }
 
             $('rows').replaceChildren();
             jobs.forEach(render);

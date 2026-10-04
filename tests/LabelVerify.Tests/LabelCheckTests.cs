@@ -93,6 +93,26 @@ public class LabelCheckTests
         Assert.Equal(verdict, LabelCheck.CheckWarningBold(header, body).Verdict);
 
     [Fact]
+    public void No_warning_found_skips_the_bold_and_size_rows()
+    {
+        var label = new ExtractedLabel("A", "B", "45%", "750 mL", null, null, null, null, null, null, null);
+        var results = LabelCheck.Compare(new Application("A", "B", "45%", "750 mL", "C", null), label);
+        Assert.Equal("Government warning wording", results[^1].Field);
+        Assert.Equal(Verdict.Mismatch, results[^1].Verdict);
+    }
+
+    [Fact]
+    public void Summary_counts_problems_and_items_to_review()
+    {
+        FieldResult R(Verdict v) => new("f", v, null, null);
+        Assert.Equal("Does not match: 1 problem found, 4 items to review",
+            LabelCheck.Summary([R(Verdict.Mismatch), R(Verdict.NeedsReview), R(Verdict.NeedsReview), R(Verdict.NeedsReview), R(Verdict.NeedsReview)]));
+        Assert.Equal("Does not match: 2 problems found", LabelCheck.Summary([R(Verdict.Mismatch), R(Verdict.Mismatch), R(Verdict.Match)]));
+        Assert.Equal("Needs your review: 1 item to review", LabelCheck.Summary([R(Verdict.NeedsReview), R(Verdict.Match)]));
+        Assert.Equal("Everything matches", LabelCheck.Summary([R(Verdict.Match)]));
+    }
+
+    [Fact]
     public void Domestic_product_skips_country_of_origin()
     {
         var app = new Application("OLD TOM DISTILLERY", "Kentucky Straight Bourbon Whiskey", "45%", "750 mL",

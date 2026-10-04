@@ -4,10 +4,9 @@
     ViewData["Title"] = "Check one label";
     var outcome = Model.Outcome;
     var results = outcome?.Results;
-    int problems = results?.Count(r => r.Verdict == outcome!.Overall) ?? 0;
 }
 <h1>Check one label</h1>
-<p class="lead">Upload a label image, type in what the application says, then press <strong>Check label</strong>.</p>
+<p class="lead">Upload photos of the label, type in what the application says, then press <strong>Check label</strong>.</p>
 
 @if (outcome?.Error is not null)
 {
@@ -17,14 +16,7 @@
 @if (results is not null)
 {
     <section class="card" aria-live="polite">
-        <div class="banner @outcome!.Overall">
-            @(outcome.Overall switch
-            {
-                Verdict.Mismatch => $"Does not match: {problems} problem{(problems == 1 ? "" : "s")} found",
-                Verdict.NeedsReview => $"Needs your review: {problems} item{(problems == 1 ? "" : "s")}",
-                _ => "Everything matches",
-            })
-        </div>
+        <div class="banner @outcome!.Overall">@LabelCheck.Summary(results)</div>
         <table class="fields">
             <thead><tr><th>Field</th><th>Result</th><th>Application says</th><th>Label says</th></tr></thead>
             <tbody>
@@ -43,17 +35,19 @@
             </tbody>
         </table>
         <p class="meta"><span id="total-wait"></span>Reading the label took @outcome.Seconds.ToString("0.0") seconds.</p>
-        @if (Model.ImageDataUrl is not null)
-        {
-            <img class="preview" src="@Model.ImageDataUrl" alt="The label image you uploaded">
-        }
+        <div class="previews">
+            @for (int i = 0; i < Model.ImageDataUrls.Count; i++)
+            {
+                <img class="preview" src="@Model.ImageDataUrls[i]" alt="Label image @(i + 1) of @Model.ImageDataUrls.Count that you uploaded">
+            }
+        </div>
     </section>
 }
 
 <form method="post" enctype="multipart/form-data" class="card" id="check-form">
-    <h2>1. Label image</h2>
-    <label for="LabelImage">Photo or scan of the label <small>(JPG or PNG, up to 10 MB)</small></label>
-    <input type="file" id="LabelImage" name="LabelImage" accept="image/jpeg,image/png,image/webp,image/gif" required>
+    <h2>1. Label images</h2>
+    <label for="LabelImages">Photos of the label <small>(front, back, and neck if they are separate; up to @LabelChecker.MaxImages images, JPG or PNG)</small></label>
+    <input type="file" id="LabelImages" name="LabelImages" accept="image/jpeg,image/png,image/webp,image/gif" multiple required>
 
     <h2 style="margin-top:28px">2. What the application says</h2>
     <div class="grid">
@@ -76,9 +70,9 @@
             const button = document.getElementById('check-button');
             button.disabled = true;
             button.textContent = 'Checking…';
-            const input = document.getElementById('LabelImage');
+            const input = document.getElementById('LabelImages');
             const files = new DataTransfer();
-            files.items.add(await shrinkImage(input.files[0]));
+            for (const file of input.files) files.items.add(await shrinkImage(file));
             input.files = files.files;
             try { sessionStorage.setItem('checkStarted', Date.now()); } catch { }
             form.submit();
